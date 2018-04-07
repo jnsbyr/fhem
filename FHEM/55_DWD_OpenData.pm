@@ -1,7 +1,7 @@
 ﻿=pod encoding UTF-8 (äöüÄÖÜ€)
 ########################################################################################
 #
-# $Id: 55_DWD_OpenData.pm 8 2018-04-02 17:26:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 11 2018-04-06 17:57:00Z jensb $
 #
 # FHEM module for DWD Open Data Server
 #
@@ -39,25 +39,32 @@ package main;
 use strict;
 use warnings;
 
-use Time::Piece;
-use Time::HiRes qw(gettimeofday);
-use HttpUtils;
+use File::Temp qw(tempfile);
 use IO::Uncompress::Unzip qw(unzip $UnzipError);
 use POSIX;
-use Blocking;
 use Storable qw(freeze thaw);
-use File::Temp qw(tempfile);
+use Time::Piece;
+use Time::HiRes qw(gettimeofday);
+
+use Blocking;
+use HttpUtils;
+use SetExtensions;
+
 
 use feature qw(switch);
 no if $] >= 5.017011, warnings => 'experimental';
+
+use constant DWD_OD_UPDATE_DISTRICTS     => -1;
+use constant DWD_OD_UPDATE_COMMUNEUNIONS => -2;
+use constant DWD_OD_UPDATE_ALL           => -3;
 
 my @dwd_dayProperties;
 my @dwd_hourProperties;
 my @dwd_wwText;
 
-my %dwd_alerts;
-my $dwd_alerts_communeunion;
-my $dwd_alerts_received;
+my @dwd_alerts          = [ undef, undef ];
+my @dwd_alerts_received = [ undef, undef ];
+my @dwd_alerts_updating = [ undef, undef ];
 
 =item DWD_OpenData_Initialize($)
 
@@ -385,21 +392,23 @@ sub DWD_OpenData_Get($@)
   my ($hash, @a) = @_;
   my $name = $hash->{NAME};
 
-  my $result = undef;  
+  my $result = undef;
   my $command = lc($a[1]);
   given($command) {
     when("alerts") {
       my $warncellId = $a[2];
       $warncellId = AttrVal($name, 'alertArea', undef) if (!defined($warncellId));
       if (defined($warncellId)) {
-        # use cache if not older than 15 minutes and same warncell id group
-        if (!defined($dwd_alerts_received) 
-            || (time() - $dwd_alerts_received >= 900) 
-            || !defined($dwd_alerts_communeunion) 
-            || ($dwd_alerts_communeunion != DWD_OpenData_IsCommuneUnionWarncellId($warncellId))) {
-          $result = DWD_OpenData_GetAlerts($hash, $warncellId);
-        } else {
+        my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+        if (defined($dwd_alerts_updating[$communeUnion]) && (time() - $dwd_alerts_updating[$communeUnion] < 60)) {
+          # abort if update is in progress
+          $result = "alerts cache update in progress, please wait and try again";
+        } elsif (defined($dwd_alerts_received[$communeUnion]) && (time() - $dwd_alerts_received[$communeUnion] < 900)) {
+          # use cache if not older than 15 minutes
           $result = DWD_OpenData_UpdateAlerts($hash, $warncellId);
+        } else {
+          # update cache if older than 15 minutes
+          $result = DWD_OpenData_GetAlerts($hash, $warncellId);
         }
       } else {
         $result = "warncell id required for $name get $command";
@@ -416,18 +425,35 @@ sub DWD_OpenData_Get($@)
       }
     }
 
-    when("updatealerts") {
-      my $warncellId = $a[2];
-      $warncellId = AttrVal($name, 'alertArea', undef) if (!defined($warncellId));
-      if (defined($warncellId)) {
-        $result = DWD_OpenData_GetAlerts($hash, $warncellId);
+    when("updatealertscache") {
+      my $updateMode = undef;
+      my $option = lc($a[2]);
+      given($option) {
+        when("communeunions") {
+          $updateMode = DWD_OD_UPDATE_COMMUNEUNIONS;
+        }
+        when("districts") {
+          $updateMode = DWD_OD_UPDATE_DISTRICTS;
+        }
+        when("all") {
+          $updateMode = DWD_OD_UPDATE_ALL;
+        }
+        default {
+          return "update mode 'communeUnions', 'districts' or 'all' required for $name get $command";
+        }
+      }
+      my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($updateMode);
+      if (defined($dwd_alerts_updating[$communeUnion]) && (time() - $dwd_alerts_updating[$communeUnion] < 60)) {
+        # abort if update is in progress
+        $result = "alerts cache update in progress, please wait and try again";
       } else {
-        $result = "warncell id required for $name get $command";
+        # update cache if older than 15 minutes
+        $result = DWD_OpenData_GetAlerts($hash, $updateMode);
       }
     }
-    
+
     default {
-      $result = "unknown get command $command, choose one of alerts forecast updateAlerts";
+      $result = "unknown get command $command, choose one of alerts forecast updateAlertsCache:communeUnions,districts,all";
     }
   }
 
@@ -565,7 +591,8 @@ sub DWD_OpenData_ParseCAPTime($) {
 
 sub DWD_OpenData_IsCommuneUnionWarncellId($) {
   my ($warncellId) = @_;
-  return int($warncellId/100000000) == 5 || int($warncellId/100000000) == 8? 1 : 0;
+  return int($warncellId/100000000) == 5 || int($warncellId/100000000) == 8
+         || $warncellId == DWD_OD_UPDATE_COMMUNEUNIONS || $warncellId == DWD_OD_UPDATE_ALL? 1 : 0;
 }
 
 =item DWD_OpenData_RotateForecast($$;$)
@@ -759,11 +786,11 @@ sub DWD_OpenData_ProcessForecast($$$)
     if (!@columnNames) {
       die "error parsing header line";
     }
-    
+
     #foreach my $columnName (@columnNames) {
     #  Log3 $name, 5, "$name: DWD_OpenData_ProcessForecast cn: $columnName";
-    #} 
-    
+    #}
+
     $csv->column_names(@columnNames);
     my @aoh;
     while (my $row = $csv->getline_hr($fileHandle)) {
@@ -926,21 +953,26 @@ sub DWD_OpenData_GetAlerts($$)
       return "$name: Perl module XML::LibXML not found, see commandref for details how to fix";
     }
 
-    # @TODO delete expired alerts
+    # @TODO delete expired alerts?
 
     # download, unzip and parse using BlockingCall
-    if (defined($hash->{".alertsFile"})) {
+    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+    if (defined($hash->{".alertsFile".$communeUnion})) {
       # delete old temp file
-      close($hash->{".alertsFileHandle"});
-      unlink($hash->{".alertsFile"});
+      close($hash->{".alertsFileHandle".$communeUnion});
+      unlink($hash->{".alertsFile".$communeUnion});
     }
-    ($hash->{".alertsFileHandle"}, $hash->{".alertsFile"}) = tempfile(UNLINK => 1);
+    ($hash->{".alertsFileHandle".$communeUnion}, $hash->{".alertsFile".$communeUnion}) = tempfile(UNLINK => 1);
     $hash->{".warncellId"} = $warncellId;
-    if (defined($hash->{".alertsBlockingCall"})) {
+    if (defined($hash->{".alertsBlockingCall".$communeUnion})) {
       # kill old blocking call
-      BlockingKill($hash->{".alertsBlockingCall"});
+      BlockingKill($hash->{".alertsBlockingCall".$communeUnion});
     }
-    $hash->{".alertsBlockingCall"} = BlockingCall("DWD_OpenData_GetAlertsBlockingFn", $hash, "DWD_OpenData_GetAlertsFinishFn", 60, "DWD_OpenData_GetAlertsAbortFn", $hash);
+    $hash->{".alertsBlockingCall".$communeUnion} = BlockingCall("DWD_OpenData_GetAlertsBlockingFn", $hash, "DWD_OpenData_GetAlertsFinishFn", 60, "DWD_OpenData_GetAlertsAbortFn", $hash);
+
+    $dwd_alerts_updating[$communeUnion] = time();
+
+    readingsSingleUpdate($hash, 'state', 'updating alerts cache', 1);
 
     Log3 $name, 5, "$name: DWD_OpenData_GetAlerts END";
     return undef;
@@ -973,7 +1005,6 @@ sub DWD_OpenData_GetAlertsBlockingFn($)
   my $warncellId = $hash->{".warncellId"};
 
   # get communion (5, 8) or district (1, 9) alerts for Germany from DWD server
-  readingsSingleUpdate($hash, 'state', 'fetching', 0);
   my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
   my $alertLanguage = AttrVal($name, 'alertLanguage', 'DE');
   my $url = 'https://opendata.dwd.de/weather/alerts/cap/'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_CELLS_STAT/Z_CAP_C_EDZW_LATEST_PVW_STATUS_PREMIUMCELLS_'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_'.$alertLanguage.'.zip';
@@ -1127,7 +1158,9 @@ sub DWD_OpenData_ProcessAlerts($$$)
         }
       }
       #Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts header: $alert->{identifier}, $alert->{status}, $alert->{msgType}: $alert->{headline}, $alert->{warncellids}[0]";
-      $alerts{$alert->{identifier}} = $alert;
+      if ($alert->{status} ne 'Test' && $alert->{responseType} ne 'Monitor') {
+        $alerts{$alert->{identifier}} = $alert;
+      }
     }
   };
 
@@ -1143,13 +1176,14 @@ sub DWD_OpenData_ProcessAlerts($$$)
       Log3 $name, 4, "$name: DWD_OpenData_ProcessAlerts error: $@";
     }
   } else {
-    # alerts parsed successfully    
-    if (defined($hash->{".alertsFile"})) {
-      if (open(my $file, ">", $hash->{".alertsFile"})) {
+    # alerts parsed successfully
+    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+    if (defined($hash->{".alertsFile".$communeUnion})) {
+      if (open(my $file, ">", $hash->{".alertsFile".$communeUnion})) {
         # write alerts to temp file
         binmode($file);
         my $frozenAlerts = freeze(\%alerts);
-        Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts temp file " . $hash->{".alertsFile"} . " alerts " . keys(%alerts) . " size " . length($frozenAlerts);
+        Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts temp file " . $hash->{".alertsFile".$communeUnion} . " alerts " . keys(%alerts) . " size " . length($frozenAlerts);
         print($file $frozenAlerts);
         close($file);
       } else {
@@ -1183,55 +1217,63 @@ sub DWD_OpenData_GetAlertsFinishFn(;$$$$)
     Log3 $name, 5, "$name: DWD_OpenData_GetAlertsFinishFn START (PID $$)";
 
     my $hash = $defs{$name};
+    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
 
     if (defined($errorMessage) && length($errorMessage) > 0) {
       readingsSingleUpdate($hash, 'state', "alerts error: $errorMessage", 1);
-    } elsif (defined($hash->{".alertsFile"})) {
+    } elsif (defined($hash->{".alertsFile".$communeUnion})) {
       # deserialize alerts
-      my $fh = $hash->{".alertsFileHandle"};
+      my $fh = $hash->{".alertsFileHandle".$communeUnion};
       my $terminator = $/;
       $/ = undef;        # enable slurp file read mode
       my $frozenAlerts = <$fh>;
       $/ = $terminator;  # restore default file read mode
-      close($hash->{".alertsFileHandle"});
-      unlink($hash->{".alertsFile"});
-      my %alerts = %{thaw($frozenAlerts)};
-      Log3 $name, 5, "$name: DWD_OpenData_GetAlertsFinishFn temp file " . $hash->{".alertsFile"} . " alerts " . keys(%alerts) . " size " . length($frozenAlerts);
-      delete($hash->{".alertsFile"});
-      
+      close($hash->{".alertsFileHandle".$communeUnion});
+      unlink($hash->{".alertsFile".$communeUnion});
+      my %newAlerts = %{thaw($frozenAlerts)};
+      Log3 $name, 5, "$name: DWD_OpenData_GetAlertsFinishFn temp file " . $hash->{".alertsFile".$communeUnion} . " alerts " . keys(%newAlerts) . " size " . length($frozenAlerts);
+      delete($hash->{".alertsFile".$communeUnion});
+
       # @TODO delete global alert list when no differential updates are available
-      %dwd_alerts = ();
- 
+      my $alerts = {};
+
       # update global alert list
-      #foreach my $identifier (keys(%alerts)) {   
-      #  Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts identifier " . $identifier . " / " .  $alerts{$identifier}{identifier};
-      #}      
-      foreach my $alert (values(%alerts)) {                  
-        my $indentifierExists = defined($dwd_alerts{$alert->{identifier}});
+      foreach my $alert (values(%newAlerts)) {
+        my $indentifierExists = defined($alerts->{$alert->{identifier}});
         if ($indentifierExists) {
           Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts identifier " . $alert->{identifier} . " already known, data not updated";
         } elsif ($alert->{msgType} eq 'Alert') {
           # add new alert
-          $dwd_alerts{$alert->{identifier}} = $alert;
+          $alerts->{$alert->{identifier}} = $alert;
         } elsif ($alert->{msgType} eq 'Update') {
           # delete old alerts
           foreach my $reference (@{$alert->{references}}) {
-            delete $dwd_alerts{$reference};
+            delete $alerts->{$reference};
           }
           # add new alert
-          $dwd_alerts{$alert->{identifier}} = $alert;
+          $alerts->{$alert->{identifier}} = $alert;
         } elsif ($alert->{msgType} eq 'Cancel') {
           # delete old alerts
           foreach my $reference (@{$alert->{references}}) {
-            delete $dwd_alerts{$reference};
+            delete $alerts->{$reference};
           }
         }
       }
-      $dwd_alerts_received = $time;
-      $dwd_alerts_communeunion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
-      
-      # update alert readings for warncell id
-      DWD_OpenData_UpdateAlerts($hash, $warncellId);
+      $dwd_alerts[$communeUnion] = $alerts;
+      $dwd_alerts_received[$communeUnion] = $time;
+      $dwd_alerts_updating[$communeUnion] = undef;
+
+      if ($warncellId >= 0) {
+        # update alert readings for warncell id
+        DWD_OpenData_UpdateAlerts($hash, $warncellId);
+      } elsif ($warncellId == DWD_OD_UPDATE_ALL) {
+        if (!defined($dwd_alerts_updating[0]) || (time() - $dwd_alerts_updating[0] >= 60)) {
+          # communeunions cache updated, start district cache update;
+          DWD_OpenData_GetAlerts($hash, DWD_OD_UPDATE_DISTRICTS);
+        }
+      } else {
+        readingsSingleUpdate($hash, 'state', "alerts cache updated", 1);
+      }
     } else {
       readingsSingleUpdate($hash, 'state', "alerts error: result file name not defined", 1);
       Log3 $name, 3, "$name: DWD_OpenData_GetAlertsFinishFn error: temp file name not defined";
@@ -1259,12 +1301,6 @@ sub DWD_OpenData_GetAlertsAbortFn($)
   Log3 $name, 3, "$name: DWD_OpenData_GetAlertsAbortFn error: retrieving weather alerts failed, $errorMessage";
 
   readingsSingleUpdate($hash, 'state', "alerts error: retrieving weather alerts failed, $errorMessage", 1);
-
-  if (defined($hash->{".alertsFile"})) {
-    close($hash->{".alertsFileHandle"});
-    unlink($hash->{".alertsFile"});
-    delete($hash->{".alertsFile"});
-  }
 }
 
 =item DWD_OpenData_UpdateAlerts($$)
@@ -1273,7 +1309,7 @@ sub DWD_OpenData_GetAlertsAbortFn($)
 
  @param $hash       hash of DWD_OpenData device
  @param $warncellId numeric warncell id
- 
+
  @return undef or error message
 
 =cut
@@ -1282,17 +1318,19 @@ sub DWD_OpenData_UpdateAlerts($$)
 {
   my ($hash, $warncellId) = @_;
   my $name = $hash->{NAME};
-  
+
   # delete existing alert readings
   CommandDeleteReading(undef, "$name a_.*");
-      
+
   readingsBeginUpdate($hash);
 
   # order alerts by onset
-  my @identifiers = sort { $dwd_alerts{$a}{onset} <=> $dwd_alerts{$b}{onset} } keys(%dwd_alerts);
+  my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+  my $alerts = $dwd_alerts[$communeUnion];
+  my @identifiers = sort { $alerts->{$a}->{onset} <=> $alerts->{$b}->{onset} } keys(%{$alerts});
   my $index = 0;
   foreach my $identifier (@identifiers) {
-    my $alert = $dwd_alerts{$identifier};
+    my $alert = $alerts->{$identifier};
     # find alert for selected warncell
     my $areaIndex = 0;
     foreach my $wcId (@{$alert->{warncellid}}) {
@@ -1330,11 +1368,11 @@ sub DWD_OpenData_UpdateAlerts($$)
 
   # alert count and receive time
   readingsBulkUpdate($hash, 'a_count', $index);
-  readingsBulkUpdate($hash, "a_time", DWD_OpenData_FormatDateTimeLocal($hash, $dwd_alerts_received));
+  readingsBulkUpdate($hash, "a_time", DWD_OpenData_FormatDateTimeLocal($hash, $dwd_alerts_received[$communeUnion]));
   readingsBulkUpdate($hash, 'state', "alerts updated");
 
   readingsEndUpdate($hash, 1);
-  
+
   return undef;
 }
 
@@ -1365,11 +1403,15 @@ sub DWD_OpenData_Timer($)
     }
   }
 
-  my $alertArea = AttrVal($name, 'alertArea', undef);
-  if (defined($alertArea)) {
-    my $result = DWD_OpenData_GetAlerts($hash, $alertArea);
-    if (defined($result)) {
-      Log3 $name, 4, "$name: error retrieving alerts: $result";
+  my $warncellId = AttrVal($name, 'alertArea', undef);
+  if (defined($warncellId)) {
+    # skip update if already in progress
+    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+    if (!defined($dwd_alerts_updating[$communeUnion]) || (time() - $dwd_alerts_updating[$communeUnion] >= 60)) {
+      my $result = DWD_OpenData_GetAlerts($hash, $warncellId);
+      if (defined($result)) {
+        Log3 $name, 4, "$name: error retrieving alerts: $result";
+      }
     }
   }
 
@@ -1403,7 +1445,8 @@ sub DWD_OpenData_Timer($)
 
 =pod
 
- @TODO if a property is not available for a given hour to value of the previous or next hour is to be used/interpolated
+ @TODO forecast: if a property is not available for a given hour to value of the previous or next hour is to be used/interpolated
+ @TODO alerts:   queue get commands while cache is updating
 
 =cut
 
@@ -1432,7 +1475,9 @@ sub DWD_OpenData_Timer($)
       <li>weather alerts:
           <a href="https://opendata.dwd.de/weather/alerts/cap">Warning status for Germany as union of referenced community/district warnings</a>. This data is updated by the DWD as required. <br><br>
 
-          Note: This function is EXPERIMENTAL - use at your own risk! This function is not suitable to rely on to ensure your safety! It will cause significant download traffic if used in continuous mode (more than 1 GB per day are possible). The device needs to keep all alerts for Germany in memory at all times to comply with the requirements of the common alerting protocol (CAP), even if only one warn cell is monitored. Depending on the weather activity this requires noticeable amounts of memory and depending on the available hardware resources alert processing may block FHEM periodically for several seconds!
+          After updating the alerts cache using the command <code>get updateAlertsCache &lt;mode&gt;</code> you can request alerts for different warncells in sequence using the command <code>get alerts &lt;warncell id&gt;</code>. Setting the attribute <code>alertArea</code> will enable continuous mode. To get continuous mode for more than one station you need to create separate DWD_OpenData devices. <br><br>
+
+          Notes: This function is not suitable to rely on to ensure your safety! It will cause significant download traffic if used in continuous mode (more than 1 GB per day are possible). The device needs to keep all alerts for Germany in memory at all times to comply with the requirements of the common alerting protocol (CAP), even if only one warn cell is monitored. Depending on the weather activity this requires noticeable amounts of memory and CPU.
       </li>
   </ul> <br>
 
@@ -1441,40 +1486,42 @@ sub DWD_OpenData_Timer($)
   <ul>
       <li>This module requires the additional Perl module <code>Text::CSV_XS (0.40 or higher)</code> for weather forecasts. It can be installed depending on your OS and your preferences (e.g. <code>sudo apt-get install libtext-csv-xs-perl</code> or using CPAN). </li><br>
 
-      <li>This module requires the additional Perl module <code>XML::LibXML</code> for weather alerts. It can be installed depending on your OS and your preferences (e.g. <code>sudo apt-get install libxml-parser-perl</code> or using CPAN). </li><br>
+      <li>This module requires the additional Perl module <code>XML::LibXML</code> for weather alerts. It can be installed depending on your OS and your preferences (e.g. <code>sudo apt-get install libxml-libxml-perl</code> or using CPAN). </li><br>
 
       <li>Data is fetched from the DWD Open Data Server using the FHEM module HttpUtils. If you use a proxy for internet access you need to set the global attribute <code>proxy</code> to a suitable value in the format <code>myProxyHost:myProxyPort</code>. </li><br>
 
       <li>This module assumes that all timestamps provided by the DWD are UTC where not specified differently. Reading names do not contain absolute days or hours to keep them independent of summertime adjustments. Days are counted relative to "today" of the timezone defined by the attribute of the same name or the timezone specified by the Perl TZ environment variable if undefined. This timezone is also used for date and time readings.  </li><br>
 
-      <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. Even in single threaded environments this will only work if the FHEM TZ environment variable is defined and set to your timezone. Enter <code>{ $ENV{TZ} }</code> into the FHEM command line to verify. If nothing is displayed or you see an unexpected timezone, fix it by adding <code>export TZ=`cat /etc/timezone`</code> or something similar to your FHEM start script, restart FHEM and check again. After restarting FHEM the Interal <code>FHEM_TZ</code> must show your system timezone. If your FHEM time is wrong after setting the TZ environment variable for the first time (verify with entering <code>{ localtime() }</code> into the FHEM command line) check the system time and timezone of your FHEM server and adjust appropriately. To fix the timezone temporarily without restarting FHEM enter <code>{ $ENV{TZ}='Europe/Berlin' }</code> or something similar into the FHEM command line. See description of attribute <code>timezone</code> how to choose a valid timezone name.  </li>
+      <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. Even in single threaded environments this will only work if the FHEM TZ environment variable is defined and set to your preferred timezone. Enter <code>{ $ENV{TZ} }</code> into the FHEM command line to verify. If nothing is displayed or you see an unexpected timezone, fix it by adding <code>export TZ=`cat /etc/timezone`</code> or something similar to your FHEM start script, restart FHEM and check again. After restarting FHEM the Interal <code>FHEM_TZ</code> must show your system timezone. If your FHEM time is wrong after setting the TZ environment variable for the first time (verify with entering <code>{ localtime() }</code> into the FHEM command line) check the system time and timezone of your FHEM server and adjust appropriately. To fix the timezone temporarily without restarting FHEM enter <code>{ $ENV{TZ}='Europe/Berlin' }</code> or something similar into the FHEM command line. See description of attribute <code>timezone</code> how to choose a valid timezone name.  </li>
   </ul><br>
 
   <a name="DWD_OpenDatadefine"></a>
   <b>Define</b> <br><br>
   <code>define &lt;name&gt; DWD_OpenData</code> <br><br><br>
-  
+
 
   <a name="DWD_OpenDataget"></a>
   <b>Get</b>
   <ul> <br>
       <li>
           <code>get forecast [&lt;station code&gt;]</code><br>
-          Fetch forecast for a station from DWD and update readings. The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>. If the attribute <code>forecastDays</code> is set, no <i>station code</i> must be provided. <br>
+          Fetch forecast for a station from DWD and update readings. The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>. If the attribute <code>forecastStation</code> is set, no <i>station code</i> must be provided. <br>
           The operation is performed non-blocking.
       </li> <br>
       <li>
           <code>get alerts [&lt;warncell id&gt;]</code><br>
-          Fetch alerts for given warncell id from cache and update readings. A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/neu_cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare. If the attribute <code>warncellId</code> is set, no <i>warncell id</i> must be provided. <br>
-          If the cache is empty, older than 15 minutes or holds data for a different warncell id group the cache is updated first and the operation is non-blocking. If the cache is valid the operation is blocking.
-      </li>
+          Set alert readings for given warncell id. A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/neu_cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). If the attribute <code>alertArea</code> is set, no <i>warncell id</i> must be provided. <br>
+          If the alerts cache is empty or older than 15 minutes the cache is updated first and the operation is non-blocking. If the cache is valid the operation is blocking. If a cache update is already in progress the operation fails. <br>
+          To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
+      </li> <br>
       <li>
-          <code>update alerts [&lt;warncell id&gt;]</code><br>
-          Force update of the alerts cache and update readings for given warncell id. See <code>get alerts</code> for detail regarding the warncell id. <br>
-          The operation is performed non-blocking.
-      </li>       
+          <code>get updateAlertsCache { communeUnions|districts|all }</code><br>
+          Fetch alerts to update the alerts cache. Note that 'coast' alerts are part of the 'communeUnion' cache data. <br>
+          The operation is performed non-blocking because it typically requires several seconds. If a cache update is already in progress the operation fails. <br>
+          This command can be used before querying several warncells in sequence or to force a higher update frequency than the built-in 15 minutes. Note that all DWD_OpenData devices share a single alerts cache so updating the cache via one of the devices is sufficient.
+      </li>
   </ul> <br><br>
-  
+
 
   <a name="DWD_OpenDataattr"></a>
   <b>Attributes</b><br>
@@ -1512,13 +1559,13 @@ sub DWD_OpenData_Timer($)
   <ul> <br>
       <li>alertArea &lt;warncell id&gt;, default: none<br>
           Setting alertArea enables automatic updates of the alerts cache every 15 minutes.
-          A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/neu_cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
+          A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/neu_cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
       </li>
       <li>alertLanguage [DE|EN], default: DE<br>
           Language of descriptive alert properties.</a>.
       </li>
   </ul> <br><br>
-  
+
 
   <a name="DWD_OpenDatareadings"></a>
   <b>Readings</b> <br><br>
@@ -1576,7 +1623,7 @@ sub DWD_OpenData_Timer($)
       <li>fc_time      - time the forecast updated was downloaded based on the timezone attribute</li>
       <li>fc_copyright - legal information, must be displayed with forecast data, see DWD usage conditions</li>
   </ul> <br><br>
-  
+
 
   The <b>alert</b> readings are ordered by onset and are build like this: <br><br>
 
