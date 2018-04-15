@@ -1,7 +1,7 @@
 ﻿=pod encoding UTF-8 (äöüÄÖÜ€)
 ########################################################################################
 #
-# $Id: 55_DWD_OpenData.pm 11 2018-04-06 17:57:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 12 2018-04-13 21:00:00Z jensb $
 #
 # FHEM module for DWD Open Data Server
 #
@@ -533,6 +533,19 @@ sub DWD_OpenData_FormatTimeLocal($$) {
   return strftime('%H:%M', DWD_OpenData_Localtime(@_));
 }
 
+=item DWD_OpenData_FormatWeekdayLocal($$)
+
+ @param  hash hash of DWD_OpenData device
+ @param  t    epoch seconds
+
+ @return abbreviated weekday name in device timezone
+
+=cut
+
+sub DWD_OpenData_FormatWeekdayLocal($$) {
+  return strftime('%a', DWD_OpenData_Localtime(@_));
+}
+
 =item DWD_OpenData_ParseDateTimeLocal($$)
 
  @param  hash hash of DWD_OpenData device
@@ -864,6 +877,7 @@ sub DWD_OpenData_ProcessForecast($$$)
         my $destinationPrefix = 'fc'.$relativeDay.'_';
         #Log3 $name, 5, "$name: $row->{forecast} $row->{parameter} -> $forecastTime -> $fcMday.$fcMon.$fcYear $fcHour:$fcMin -> $forecastDate -> $destinationPrefix";
         readingsBulkUpdate($hash, $destinationPrefix.'date', DWD_OpenData_FormatDateLocal($hash, $forecastTime->epoch));
+        readingsBulkUpdate($hash, $destinationPrefix.'weekday', DWD_OpenData_FormatWeekdayLocal($hash, $forecastTime->epoch));
         foreach my $property (@selectedDayProperties) {
           my $value = $row->{$property};
           $value = undef if ($value eq "---");
@@ -1431,6 +1445,9 @@ sub DWD_OpenData_Timer($)
 =pod
 
  CHANGES
+ 
+ 13.04.2018 jensb
+ feature: forecast weekday reading
 
  28.03.2018 jensb
  feature: support for CAP alerts
@@ -1490,9 +1507,12 @@ sub DWD_OpenData_Timer($)
 
       <li>Data is fetched from the DWD Open Data Server using the FHEM module HttpUtils. If you use a proxy for internet access you need to set the global attribute <code>proxy</code> to a suitable value in the format <code>myProxyHost:myProxyPort</code>. </li><br>
 
-      <li>This module assumes that all timestamps provided by the DWD are UTC where not specified differently. Reading names do not contain absolute days or hours to keep them independent of summertime adjustments. Days are counted relative to "today" of the timezone defined by the attribute of the same name or the timezone specified by the Perl TZ environment variable if undefined. This timezone is also used for date and time readings.  </li><br>
+      <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. Even in single threaded environments this will only work if the FHEM TZ environment variable is defined and set to your preferred timezone. Enter <code>{ $ENV{TZ} }</code> into the FHEM command line to verify. If nothing is displayed or you see an unexpected timezone, fix it by adding <code>export TZ=`cat /etc/timezone`</code> or something similar to your FHEM start script, restart FHEM and check again. After restarting FHEM the Internal <code>FHEM_TZ</code> must show your system timezone. If your FHEM time is wrong after setting the TZ environment variable for the first time (verify with entering <code>{ localtime() }</code> into the FHEM command line) check the system time and timezone of your FHEM server and adjust appropriately. To fix the timezone temporarily without restarting FHEM enter <code>{ $ENV{TZ}='Europe/Berlin' }</code> or something similar into the FHEM command line. See description of attribute <code>timezone</code> how to choose a valid timezone name.  </li><br>
+      
+      <li>The forecast reading names do not contain absolute days or hours to keep them independent of summertime adjustments. Forecast days are counted relative to "today" of the timezone defined by the attribute of the same name or the timezone specified by the Perl TZ environment variable if undefined. </li><br>
 
-      <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. Even in single threaded environments this will only work if the FHEM TZ environment variable is defined and set to your preferred timezone. Enter <code>{ $ENV{TZ} }</code> into the FHEM command line to verify. If nothing is displayed or you see an unexpected timezone, fix it by adding <code>export TZ=`cat /etc/timezone`</code> or something similar to your FHEM start script, restart FHEM and check again. After restarting FHEM the Interal <code>FHEM_TZ</code> must show your system timezone. If your FHEM time is wrong after setting the TZ environment variable for the first time (verify with entering <code>{ localtime() }</code> into the FHEM command line) check the system time and timezone of your FHEM server and adjust appropriately. To fix the timezone temporarily without restarting FHEM enter <code>{ $ENV{TZ}='Europe/Berlin' }</code> or something similar into the FHEM command line. See description of attribute <code>timezone</code> how to choose a valid timezone name.  </li>
+      <li>The weekday of the forecast will be in the language of your FHEM system. Enter <code>{ $ENV{LANG} }</code> into the FHEM command line to verify. 
+      If nothing is displayed or you see an unexpected language setting, add <code>export LANG=de_DE.UTF-8</code> or something similar to your FHEM start script, restart FHEM and check again. If you get a locale warning when starting FHEM the required language pack might be missing. It can be installed depending on your OS and your preferences (e.g. <code>apt-get install language-pack-de</code> or something similar). </li>      
   </ul><br>
 
   <a name="DWD_OpenDatadefine"></a>
@@ -1582,6 +1602,7 @@ sub DWD_OpenData_Timer($)
       <li>day properties (see raw data of station for time relation)
           <ul>
              <li>date       - date based on the timezone attribute</li>
+             <li>weekday    - abbreviated weekday based on the timezone attribute in the language of your FHEM system</li>
              <li>Tn [°C]    - minimum temperature of previous 24 hours (typically until 07:00 station time)</li>
              <li>Tx [°C]    - maximum temperature of previous 24 hours (typically until 19:00 station time)</li>
              <li>Tm [°C]    - average temperature of previous 24 hours</li>
