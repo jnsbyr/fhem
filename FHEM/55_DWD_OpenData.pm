@@ -1,7 +1,7 @@
 ﻿=pod encoding UTF-8 (äöüÄÖÜ€)
 ########################################################################################
 #
-# $Id: 55_DWD_OpenData.pm 12 2018-04-13 21:00:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 13 2018-04-16 19:12:00Z jensb $
 #
 # FHEM module for DWD Open Data Server
 #
@@ -1112,7 +1112,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
           foreach my $reference (@references) {
             my @parts = split(',', $reference);
             if (scalar(@parts) == 3) {
-              push($alert->{references}, $parts[2]);
+              push(@{$alert->{references}}, $parts[2]);
             }
           }
         } elsif ($alertChildNode->nodeName() eq 'info') {
@@ -1162,10 +1162,10 @@ sub DWD_OpenData_ProcessAlerts($$$)
                   $alert->{ceiling} = [];
                 }
                 #Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts warncellid: " . $xpc->findvalue("./cap:geocode/cap:value");
-                push($alert->{warncellid}, $xpc->findvalue("./cap:geocode/cap:value"));
-                push($alert->{areaDesc}, $xpc->findvalue("./cap:areaDesc"));
-                push($alert->{altitude}, $xpc->findvalue("./cap:altitude"));
-                push($alert->{ceiling}, $xpc->findvalue("./cap:ceiling"));
+                push(@{$alert->{warncellid}}, $xpc->findvalue("./cap:geocode/cap:value"));
+                push(@{$alert->{areaDesc}}, $xpc->findvalue("./cap:areaDesc"));
+                push(@{$alert->{altitude}}, $xpc->findvalue("./cap:altitude"));
+                push(@{$alert->{ceiling}}, $xpc->findvalue("./cap:ceiling"));
               }
             }
           }
@@ -1446,6 +1446,9 @@ sub DWD_OpenData_Timer($)
 
  CHANGES
  
+ 16.04.2018 jensb
+ bugfix: alerts push on scalar
+
  13.04.2018 jensb
  feature: forecast weekday reading
 
