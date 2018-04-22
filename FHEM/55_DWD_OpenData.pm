@@ -1,7 +1,7 @@
 ﻿=pod encoding UTF-8 (äöüÄÖÜ€)
 ########################################################################################
 #
-# $Id: 55_DWD_OpenData.pm 13 2018-04-16 19:12:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 14 2018-04-22 10:08:00Z jensb $
 #
 # FHEM module for DWD Open Data Server
 #
@@ -60,7 +60,7 @@ use constant DWD_OD_UPDATE_ALL           => -3;
 
 my @dwd_dayProperties;
 my @dwd_hourProperties;
-my @dwd_wwText;
+my @dwd_wwdText;
 
 my @dwd_alerts          = [ undef, undef ];
 my @dwd_alerts_received = [ undef, undef ];
@@ -97,116 +97,116 @@ sub DWD_OpenData_Initialize($) {
   @dwd_hourProperties = ( 'TT', 'Td', 'RR6', 'RRp6', 'RR12', 'RRp12', 'RR24', 'RRp24',
                           'ww', 'Nf', 'NL', 'NM', 'NH', 'dd', 'ff', 'fx', 'VV', 'PPPP' );
 
-  @dwd_wwText = ( "Bewölkungsentwicklung nicht beobachtet",
-                  "Bewölkung abnehmend",
-                  "Bewölkung unverändert",
-                  "Bewölkung zunehmend",
-                  # 4 Dunst, Rauch, Staub oder Sand
-                  "Sicht durch Rauch oder Asche vermindert",
-                  "trockener Dunst (relative Feuchte < 80 %)",
-                  "verbreiteter Schwebstaub, nicht vom Wind herangeführt",
-                  "Staub oder Sand bzw. Gischt, vom Wind herangeführt",
-                  "gut entwickelte Staub- oder Sandwirbel",
-                  "Staub- oder Sandsturm im Gesichtskreis, aber nicht an der Station",
-                  # 10 Trockenereignisse
-                  "feuchter Dunst (relative Feuchte > 80 %)",
-                  "Schwaden von Bodennebel",
-                  "durchgehender Bodennebel",
-                  "Wetterleuchten sichtbar, kein Donner gehört",
-                  "Niederschlag im Gesichtskreis, nicht den Boden erreichend",
-                  "Niederschlag in der Ferne (> 5 km), aber nicht an der Station",
-                  "Niederschlag in der Nähe (< 5 km), aber nicht an der Station",
-                  "Gewitter (Donner hörbar), aber kein Niederschlag an der Station",
-                  "Markante Böen im Gesichtskreis, aber kein Niederschlag an der Station",
-                  "Tromben (trichterförmige Wolkenschläuche) im Gesichtskreis",
-                  # 20 Ereignisse der letzten Stunde, aber nicht zur Beobachtungszeit
-                  "nach Sprühregen oder Schneegriesel",
-                  "nach Regen",
-                  "nach Schneefall",
-                  "nach Schneeregen oder Eiskörnern",
-                  "nach gefrierendem Regen",
-                  "nach Regenschauer",
-                  "nach Schneeschauer",
-                  "nach Graupel- oder Hagelschauer",
-                  "nach Nebel",
-                  "nach Gewitter",
-                  # 30 Staubsturm, Sandsturm, Schneefegen oder -treiben
-                  "leichter oder mäßiger Sandsturm, an Intensität abnehmend",
-                  "leichter oder mäßiger Sandsturm, unveränderte Intensität",
-                  "leichter oder mäßiger Sandsturm, an Intensität zunehmend",
-                  "schwerer Sandsturm, an Intensität abnehmend",
-                  "schwerer Sandsturm, unveränderte Intensität",
-                  "schwerer Sandsturm, an Intensität zunehmend",
-                  "leichtes oder mäßiges Schneefegen, unter Augenhöhe",
-                  "starkes Schneefegen, unter Augenhöhe",
-                  "leichtes oder mäßiges Schneetreiben, über Augenhöhe",
-                  "starkes Schneetreiben, über Augenhöhe",
-                  # 40 Nebel oder Eisnebel
-                  "Nebel in einiger Entfernung",
-                  "Nebel in Schwaden oder Bänken",
-                  "Nebel, Himmel erkennbar, dünner werdend",
-                  "Nebel, Himmel nicht erkennbar, dünner werdend",
-                  "Nebel, Himmel erkennbar, unverändert",
-                  "Nebel, Himmel nicht erkennbar, unverändert",
-                  "Nebel, Himmel erkennbar, dichter werdend",
-                  "Nebel, Himmel nicht erkennbar, dichter werdend",
-                  "Nebel mit Reifansatz, Himmel erkennbar",
-                  "Nebel mit Reifansatz, Himmel nicht erkennbar",
-                  # 50 Sprühregen
-                  "unterbrochener leichter Sprühregen",
-                  "durchgehend leichter Sprühregen",
-                  "unterbrochener mäßiger Sprühregen",
-                  "durchgehend mäßiger Sprühregen",
-                  "unterbrochener starker Sprühregen",
-                  "durchgehend starker Sprühregen",
-                  "leichter gefrierender Sprühregen",
-                  "mäßiger oder starker gefrierender Sprühregen",
-                  "leichter Sprühregen mit Regen",
-                  "mäßiger oder starker Sprühregen mit Regen",
-                  # 60 Regen
-                  "unterbrochener leichter Regen oder einzelne Regentropfen",
-                  "durchgehend leichter Regen",
-                  "unterbrochener mäßiger Regen",
-                  "durchgehend mäßiger Regen",
-                  "unterbrochener starker Regen",
-                  "durchgehend starker Regen",
-                  "leichter gefrierender Regen",
-                  "mäßiger oder starker gefrierender Regen",
-                  "leichter Schneeregen",
-                  "mäßiger oder starker Schneeregen",
-                  # 70 Schnee
-                  "unterbrochener leichter Schneefall oder einzelne Schneeflocken",
-                  "durchgehend leichter Schneefall",
-                  "unterbrochener mäßiger Schneefall",
-                  "durchgehend mäßiger Schneefall",
-                  "unterbrochener starker Schneefall",
-                  "durchgehend starker Schneefall",
-                  "Eisnadeln (Polarschnee)",
-                  "Schneegriesel",
-                  "Schneekristalle",
-                  "Eiskörner (gefrorene Regentropfen)",
-                  # 80 Schauer
-                  "leichter Regenschauer",
-                  "mäßiger oder starker Regenschauer",
-                  "äußerst heftiger Regenschauer",
-                  "leichter Schneeregenschauer",
-                  "mäßiger oder starker Schneeregenschauer",
-                  "leichter Schneeschauer",
-                  "mäßiger oder starker Schneeschauer",
-                  "leichter Graupelschauer",
-                  "mäßiger oder starker Graupelschauer",
-                  "leichter Hagelschauer",
-                  "mäßiger oder starker Hagelschauer",
-                  # 90 Gewitter
-                  "Gewitter in der letzten Stunde, zurzeit leichter Regen",
-                  "Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Regen",
-                  "Gewitter in der letzten Stunde, zurzeit leichter Schneefall/Schneeregen/Graupel/Hagel",
-                  "Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Schneefall/Schneeregen/Graupel/Hagel",
-                  "leichtes oder mäßiges Gewitter mit Regen oder Schnee",
-                  "leichtes oder mäßiges Gewitter mit Graupel oder Hagel",
-                  "starkes Gewitter mit Regen oder Schnee",
-                  "starkes Gewitter mit Sandsturm",
-                  "starkes Gewitter mit Graupel oder Hagel");
+  @dwd_wwdText = ( "Bewölkungsentwicklung nicht beobachtet",
+                   "Bewölkung abnehmend",
+                   "Bewölkung unverändert",
+                   "Bewölkung zunehmend",
+                   # 4 Dunst, Rauch, Staub oder Sand
+                   "Sicht durch Rauch oder Asche vermindert",
+                   "trockener Dunst (relative Feuchte < 80 %)",
+                   "verbreiteter Schwebstaub, nicht vom Wind herangeführt",
+                   "Staub oder Sand bzw. Gischt, vom Wind herangeführt",
+                   "gut entwickelte Staub- oder Sandwirbel",
+                   "Staub- oder Sandsturm im Gesichtskreis, aber nicht an der Station",
+                   # 10 Trockenereignisse
+                   "feuchter Dunst (relative Feuchte > 80 %)",
+                   "Schwaden von Bodennebel",
+                   "durchgehender Bodennebel",
+                   "Wetterleuchten sichtbar, kein Donner gehört",
+                   "Niederschlag im Gesichtskreis, nicht den Boden erreichend",
+                   "Niederschlag in der Ferne (> 5 km), aber nicht an der Station",
+                   "Niederschlag in der Nähe (< 5 km), aber nicht an der Station",
+                   "Gewitter (Donner hörbar), aber kein Niederschlag an der Station",
+                   "Markante Böen im Gesichtskreis, aber kein Niederschlag an der Station",
+                   "Tromben (trichterförmige Wolkenschläuche) im Gesichtskreis",
+                   # 20 Ereignisse der letzten Stunde, aber nicht zur Beobachtungszeit
+                   "nach Sprühregen oder Schneegriesel",
+                   "nach Regen",
+                   "nach Schneefall",
+                   "nach Schneeregen oder Eiskörnern",
+                   "nach gefrierendem Regen",
+                   "nach Regenschauer",
+                   "nach Schneeschauer",
+                   "nach Graupel- oder Hagelschauer",
+                   "nach Nebel",
+                   "nach Gewitter",
+                   # 30 Staubsturm, Sandsturm, Schneefegen oder -treiben
+                   "leichter oder mäßiger Sandsturm, an Intensität abnehmend",
+                   "leichter oder mäßiger Sandsturm, unveränderte Intensität",
+                   "leichter oder mäßiger Sandsturm, an Intensität zunehmend",
+                   "schwerer Sandsturm, an Intensität abnehmend",
+                   "schwerer Sandsturm, unveränderte Intensität",
+                   "schwerer Sandsturm, an Intensität zunehmend",
+                   "leichtes oder mäßiges Schneefegen, unter Augenhöhe",
+                   "starkes Schneefegen, unter Augenhöhe",
+                   "leichtes oder mäßiges Schneetreiben, über Augenhöhe",
+                   "starkes Schneetreiben, über Augenhöhe",
+                   # 40 Nebel oder Eisnebel
+                   "Nebel in einiger Entfernung",
+                   "Nebel in Schwaden oder Bänken",
+                   "Nebel, Himmel erkennbar, dünner werdend",
+                   "Nebel, Himmel nicht erkennbar, dünner werdend",
+                   "Nebel, Himmel erkennbar, unverändert",
+                   "Nebel, Himmel nicht erkennbar, unverändert",
+                   "Nebel, Himmel erkennbar, dichter werdend",
+                   "Nebel, Himmel nicht erkennbar, dichter werdend",
+                   "Nebel mit Reifansatz, Himmel erkennbar",
+                   "Nebel mit Reifansatz, Himmel nicht erkennbar",
+                   # 50 Sprühregen
+                   "unterbrochener leichter Sprühregen",
+                   "durchgehend leichter Sprühregen",
+                   "unterbrochener mäßiger Sprühregen",
+                   "durchgehend mäßiger Sprühregen",
+                   "unterbrochener starker Sprühregen",
+                   "durchgehend starker Sprühregen",
+                   "leichter gefrierender Sprühregen",
+                   "mäßiger oder starker gefrierender Sprühregen",
+                   "leichter Sprühregen mit Regen",
+                   "mäßiger oder starker Sprühregen mit Regen",
+                   # 60 Regen
+                   "unterbrochener leichter Regen oder einzelne Regentropfen",
+                   "durchgehend leichter Regen",
+                   "unterbrochener mäßiger Regen",
+                   "durchgehend mäßiger Regen",
+                   "unterbrochener starker Regen",
+                   "durchgehend starker Regen",
+                   "leichter gefrierender Regen",
+                   "mäßiger oder starker gefrierender Regen",
+                   "leichter Schneeregen",
+                   "mäßiger oder starker Schneeregen",
+                   # 70 Schnee
+                   "unterbrochener leichter Schneefall oder einzelne Schneeflocken",
+                   "durchgehend leichter Schneefall",
+                   "unterbrochener mäßiger Schneefall",
+                   "durchgehend mäßiger Schneefall",
+                   "unterbrochener starker Schneefall",
+                   "durchgehend starker Schneefall",
+                   "Eisnadeln (Polarschnee)",
+                   "Schneegriesel",
+                   "Schneekristalle",
+                   "Eiskörner (gefrorene Regentropfen)",
+                   # 80 Schauer
+                   "leichter Regenschauer",
+                   "mäßiger oder starker Regenschauer",
+                   "äußerst heftiger Regenschauer",
+                   "leichter Schneeregenschauer",
+                   "mäßiger oder starker Schneeregenschauer",
+                   "leichter Schneeschauer",
+                   "mäßiger oder starker Schneeschauer",
+                   "leichter Graupelschauer",
+                   "mäßiger oder starker Graupelschauer",
+                   "leichter Hagelschauer",
+                   "mäßiger oder starker Hagelschauer",
+                   # 90 Gewitter
+                   "Gewitter in der letzten Stunde, zurzeit leichter Regen",
+                   "Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Regen",
+                   "Gewitter in der letzten Stunde, zurzeit leichter Schneefall/Schneeregen/Graupel/Hagel",
+                   "Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Schneefall/Schneeregen/Graupel/Hagel",
+                   "leichtes oder mäßiges Gewitter mit Regen oder Schnee",
+                   "leichtes oder mäßiges Gewitter mit Graupel oder Hagel",
+                   "starkes Gewitter mit Regen oder Schnee",
+                   "starkes Gewitter mit Sandsturm",
+                   "starkes Gewitter mit Graupel oder Hagel");
 }
 
 =item DWD_OpenData_Define($$)
@@ -225,26 +225,11 @@ sub DWD_OpenData_Define($$) {
   my ($hash, $def) = @_;
   my $name = $hash->{NAME};
 
-  # test perl module Text::CSV_XS
-  eval {
-    require Text::CSV_XS; # 0.40 or higher required
-    Text::CSV_XS->new();
-  };
-  if ($@) {
-    my $message = "$name: Perl module Text::CSV_XS not found, see commandref for details how to fix";
-    return $message;
-  }
-  my $textCsvXsVersion = $Text::CSV_XS::VERSION;
-  if ($textCsvXsVersion < 0.40) {
-    my $message = "$name: Perl module Text::CSV_XS has incompatible version $textCsvXsVersion, see commandref for details how to fix";
-    return $message;
-  }
-
   # test TZ environment variable
-  $hash->{FHEM_TZ} = $ENV{"TZ"};
-  if (!defined($hash->{FHEM_TZ}) || length($hash->{FHEM_TZ}) == 0) {
-    my $message = "$name: FHEM TZ environment variable undefined, see commandref for details how to fix";
-    return $message;
+  if (!defined($ENV{"TZ"})) {
+    $hash->{FHEM_TZ} = undef;
+  } else {
+    $hash->{FHEM_TZ} = $ENV{"TZ"};
   }
 
   # cache timezone attribute
@@ -471,9 +456,15 @@ sub DWD_OpenData_Get($@)
 
 sub DWD_OpenData_Timelocal($@) {
   my ($hash, @ta) = @_;
-  $ENV{"TZ"} = $hash->{'.TZ'};
+  if (defined($hash->{'.TZ'})) {
+    $ENV{"TZ"} = $hash->{'.TZ'};
+  }
   my $t = timelocal(@ta);
-  $ENV{"TZ"} = $hash->{FHEM_TZ};
+  if (defined($hash->{FHEM_TZ})) {
+    $ENV{"TZ"} = $hash->{FHEM_TZ};
+  } else {
+    delete $ENV{"TZ"};
+  }
   return $t;
 }
 
@@ -488,9 +479,15 @@ sub DWD_OpenData_Timelocal($@) {
 
 sub DWD_OpenData_Localtime(@) {
   my ($hash, $t) = @_;
-  $ENV{"TZ"} = $hash->{'.TZ'};
+  if (defined($hash->{'.TZ'})) {
+    $ENV{"TZ"} = $hash->{'.TZ'};
+  }
   my @ta = localtime($t);
-  $ENV{"TZ"} = $hash->{FHEM_TZ};
+  if (defined($hash->{FHEM_TZ})) {
+    $ENV{"TZ"} = $hash->{FHEM_TZ};
+  } else {
+    delete $ENV{"TZ"};
+  }
   return @ta;
 }
 
@@ -706,13 +703,19 @@ sub DWD_OpenData_GetForecast($$)
   my $name = $hash->{NAME};
 
   if (!IsDisabled($name)) {
-    # verify timezones
-    if (!defined($hash->{FHEM_TZ}) || length($hash->{FHEM_TZ}) == 0) {
-      readingsSingleUpdate($hash, 'state', 'error', 1);
-      return "$name: FHEM TZ environment variable undefined, see commandref for details how to fix";
+    # test perl module Text::CSV_XS
+    eval {
+      require Text::CSV_XS; # 0.40 or higher required
+      Text::CSV_XS->new();
+    };
+    if ($@) {
+      my $message = "$name: Perl module Text::CSV_XS not found, see commandref for details how to fix";
+      return $message;
     }
-    if (!defined($hash->{'.TZ'}) || length($hash->{'.TZ'}) == 0) {
-      $hash->{'.TZ'} = $hash->{FHEM_TZ};
+    my $textCsvXsVersion = $Text::CSV_XS::VERSION;
+    if ($textCsvXsVersion < 0.40) {
+      my $message = "$name: Perl module Text::CSV_XS has incompatible version $textCsvXsVersion, see commandref for details how to fix";
+      return $message;
     }
 
     # station name must be 5 chars, extend
@@ -902,7 +905,7 @@ sub DWD_OpenData_ProcessForecast($$$)
               $value =~ s/,/./g;
               readingsBulkUpdate($hash, $destinationPrefix.$property, $value);
               if ($forecastWW2Text && ($property eq 'ww') && length($value) > 0) {
-                readingsBulkUpdate($hash, $destinationPrefix.'wwd', $dwd_wwText[$value]);
+                readingsBulkUpdate($hash, $destinationPrefix.'wwd', $dwd_wwdText[$value]);
               }
             }
           }
@@ -1445,7 +1448,10 @@ sub DWD_OpenData_Timer($)
 =pod
 
  CHANGES
- 
+
+ 22.04.2018 jensb
+ feature: relaxed installation prerequisites (Text::CSV_XS now forecast specific, TZ does not need to be defined)
+
  16.04.2018 jensb
  bugfix: alerts push on scalar
 
@@ -1510,12 +1516,14 @@ sub DWD_OpenData_Timer($)
 
       <li>Data is fetched from the DWD Open Data Server using the FHEM module HttpUtils. If you use a proxy for internet access you need to set the global attribute <code>proxy</code> to a suitable value in the format <code>myProxyHost:myProxyPort</code>. </li><br>
 
-      <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. Even in single threaded environments this will only work if the FHEM TZ environment variable is defined and set to your preferred timezone. Enter <code>{ $ENV{TZ} }</code> into the FHEM command line to verify. If nothing is displayed or you see an unexpected timezone, fix it by adding <code>export TZ=`cat /etc/timezone`</code> or something similar to your FHEM start script, restart FHEM and check again. After restarting FHEM the Internal <code>FHEM_TZ</code> must show your system timezone. If your FHEM time is wrong after setting the TZ environment variable for the first time (verify with entering <code>{ localtime() }</code> into the FHEM command line) check the system time and timezone of your FHEM server and adjust appropriately. To fix the timezone temporarily without restarting FHEM enter <code>{ $ENV{TZ}='Europe/Berlin' }</code> or something similar into the FHEM command line. See description of attribute <code>timezone</code> how to choose a valid timezone name.  </li><br>
-      
-      <li>The forecast reading names do not contain absolute days or hours to keep them independent of summertime adjustments. Forecast days are counted relative to "today" of the timezone defined by the attribute of the same name or the timezone specified by the Perl TZ environment variable if undefined. </li><br>
+      <li>Verify that your FHEM time is correct by entering <code>{localtime()}</code> into the FHEM command line. If not, check the system time and timezone of your FHEM server and adjust appropriately. It may be necessary to add <code>export TZ=`cat /etc/timezone`</code> or something similar to your FHEM start script <code>/etc/init.d/fhem</code> or your system configuration file <code>/etc/profile</code>. If <code>/etc/timezone</code> does not exists or is undefined execute <code>tzselect</code> to find your timezone and write the result into this file. After making changes restart FHEM and enter <code>{$ENV{TZ}}</code> into the FHEM command line to verify. To fix the timezone temporarily without restarting FHEM enter <code>{$ENV{TZ}='Europe/Berlin'}</code> or something similar into the FHEM command line. Again use <code>tzselect</code> to fine a valid timezone name. </li><br>
 
-      <li>The weekday of the forecast will be in the language of your FHEM system. Enter <code>{ $ENV{LANG} }</code> into the FHEM command line to verify. 
-      If nothing is displayed or you see an unexpected language setting, add <code>export LANG=de_DE.UTF-8</code> or something similar to your FHEM start script, restart FHEM and check again. If you get a locale warning when starting FHEM the required language pack might be missing. It can be installed depending on your OS and your preferences (e.g. <code>apt-get install language-pack-de</code> or something similar). </li>      
+      <li>The weekday of the forecast will be in the language of your FHEM system. Enter <code>{$ENV{LANG}}</code> into the FHEM command line to verify.
+      If nothing is displayed or you see an unexpected language setting, add <code>export LANG=de_DE.UTF-8</code> or something similar to your FHEM start script, restart FHEM and check again. If you get a locale warning when starting FHEM the required language pack might be missing. It can be installed depending on your OS and your preferences (e.g. <code>apt-get install language-pack-de</code> or something similar). </li><br>
+
+      <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. </li><br>
+
+      <li>The forecast reading names do not contain absolute days or hours to keep them independent of summertime adjustments. Forecast days are counted relative to "today" of the timezone defined by the attribute of the same name or the timezone specified by the Perl TZ environment variable if undefined. </li><br>
   </ul><br>
 
   <a name="DWD_OpenDatadefine"></a>
@@ -1552,8 +1560,8 @@ sub DWD_OpenData_Timer($)
       <li>disable {0|1}, default: 0<br>
           Disable fetching data.
       </li><br>
-      <li>timezone <tz>, default: Perl TZ environment variable<br>
-          <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">IANA TZ string</a> for date and time readings (e.g. "Europe/Berlin"), can be used to assume the perspective of a station that is in a different timezone or if your Perl TZ environment variable is not set to your local timezone.
+      <li>timezone <tz>, default: OS dependent<br>
+          <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">IANA TZ string</a> for date and time readings (e.g. "Europe/Berlin"), can be used to assume the perspective of a station that is in a different timezone or if your OS timezone settings do not match your local timezone. Alternatively you may use <code>tzselect</code> on the Linux command line to find a valid timezone string.
       </li><br>
   </ul>
 
@@ -1643,9 +1651,11 @@ sub DWD_OpenData_Timer($)
 
   Additionally there are global forecast readings:
   <ul>
+    <ul>
       <li>fc_station   - forecast station code (WMO or DWD)</li>
       <li>fc_time      - time the forecast updated was downloaded based on the timezone attribute</li>
       <li>fc_copyright - legal information, must be displayed with forecast data, see DWD usage conditions</li>
+    </ul>
   </ul> <br><br>
 
 
@@ -1681,9 +1691,11 @@ sub DWD_OpenData_Timer($)
 
   Additionally there are global alert readings:
   <ul>
+    <ul>
       <li>a_time       - time the last alert update was downloaded based on the timezone attribute</li>
       <li>a_count      - number of alerts available for selected warncell id</li>
       <li>a_copyright  - legal information, must be displayed with forecast data, see DWD usage conditions, not available if count is zero</li>
+    </ul>
   </ul> <br>
 
   Alerts should be considered active for onset <= now < expires and responseType != 'AllClear' independent of urgency.<br>
@@ -1696,5 +1708,21 @@ sub DWD_OpenData_Timer($)
 </ul> <br>
 
 =end html
+
+=begin html_DE
+
+<a name="DWD_OpenData"></a>
+<h3>DWD_OpenData</h3>
+<ul>
+  Der Deutsche Wetterdienst (DWD) stellt Wetterdaten &uuml;ber den <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html">Open Data Server</a> zur Verf&uuml;gung. Die Verwendung dieses Dienstes und der vom DWD zur Verf&uuml;gung gestellten Daten unterliegt den auf der Webseite beschriebenen Bedingungen. Einen &Uuml;berblick &uuml;ber die verf&uuml;gbaren Daten findet man in der Tabelle <a href="https://www.dwd.de/DE/leistungen/opendata/help/inhalt_allgemein/opendata_content_de_en_xls.xls">OpenData_weather_content.xls</a>. <br><br>
+
+  Eine detaillierte Modulbeschreibung gibt es auf Englisch - siehe die englische Modulhilfe von <a href="commandref.html#DWD_OpenData">DWD_OpenData</a>. <br><br>
+
+  Dieses Modul erfordert zus&auml;tzliche Installationsschritte und ist daher f&uuml;r Anf&auml;nger ungeeignet. <br>
+
+</ul> <br>
+
+=end html_DE
+
 =cut
 
