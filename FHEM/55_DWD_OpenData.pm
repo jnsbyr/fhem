@@ -1,7 +1,7 @@
 ﻿=pod encoding UTF-8 (äöüÄÖÜ€)
 ########################################################################################
 #
-# $Id: 55_DWD_OpenData.pm 14 2018-04-22 10:08:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 15 2018-05-10 20:08:00Z jensb $
 #
 # FHEM module for DWD Open Data Server
 #
@@ -1024,7 +1024,7 @@ sub DWD_OpenData_GetAlertsBlockingFn($)
   # get communion (5, 8) or district (1, 9) alerts for Germany from DWD server
   my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
   my $alertLanguage = AttrVal($name, 'alertLanguage', 'DE');
-  my $url = 'https://opendata.dwd.de/weather/alerts/cap/'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_CELLS_STAT/Z_CAP_C_EDZW_LATEST_PVW_STATUS_PREMIUMCELLS_'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_'.$alertLanguage.'.zip';
+  my $url = 'https://opendata.dwd.de/weather/alerts/cap/'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_CELLS_STAT/Z_CAP_C_EDZW_LATEST_PVW_STATUS_PREMIUMCELLS_'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_'.$alertLanguage.'.zip';  
   my $param = {
                 url        => $url,
                 method     => "GET",
@@ -1087,9 +1087,13 @@ sub DWD_OpenData_ProcessAlerts($$$)
     my @xmlStrings;
     unzip($zipFileHandle => \@xmlStrings, MultiStream => 1) or die "unzip failed: $UnzipError\n";
 
-    # parse XML files
+    # parse XML strings
     foreach my $xmlString (@xmlStrings) {
-      # parse XML file
+      if (substr(${$xmlString}, 0, 2) eq 'PK') {
+        # empty string, skip
+        next;
+      }
+      # parse XML strings
       Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts: parsing XML document";
       my $dom = XML::LibXML->load_xml(string => $xmlString);
       if (!$dom) {
@@ -1184,7 +1188,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
   my $errorMessage = '';
   if ($@) {
     # exception
-    my @parts = split(' at ', $@);
+    my @parts = split(/ at |\n/, $@); # discard anything after " at " or newline
     if (@parts) {
       $errorMessage = $parts[0];
       Log3 $name, 4, "$name: DWD_OpenData_ProcessAlerts error: $parts[0]";
@@ -1212,6 +1216,10 @@ sub DWD_OpenData_ProcessAlerts($$$)
       Log3 $name, 3, "$name: DWD_OpenData_ProcessAlerts error: temp file name not defined";
     }
   }
+  
+  # get rid of newlines and commas because of Blocking InformFn parameter restrictions
+  $errorMessage =~ s/\n/; /g; 
+  $errorMessage =~ s/,/;/g; 
 
   Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts END";
 
@@ -1237,6 +1245,7 @@ sub DWD_OpenData_GetAlertsFinishFn(;$$$$)
     my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
 
     if (defined($errorMessage) && length($errorMessage) > 0) {
+      $dwd_alerts_updating[$communeUnion] = undef;
       readingsSingleUpdate($hash, 'state', "alerts error: $errorMessage", 1);
     } elsif (defined($hash->{".alertsFile".$communeUnion})) {
       # deserialize alerts
@@ -1295,6 +1304,8 @@ sub DWD_OpenData_GetAlertsFinishFn(;$$$$)
       readingsSingleUpdate($hash, 'state', "alerts error: result file name not defined", 1);
       Log3 $name, 3, "$name: DWD_OpenData_GetAlertsFinishFn error: temp file name not defined";
     }
+    
+    $hash->{ALERTS_IN_CACHE} = scalar(keys(%{$dwd_alerts[0]})) + scalar(keys(%{$dwd_alerts[1]}));
 
     Log3 $name, 5, "$name: DWD_OpenData_GetAlertsFinishFn END";
   } else {
@@ -1449,6 +1460,10 @@ sub DWD_OpenData_Timer($)
 
  CHANGES
 
+ 06.05.2018 jensb
+ feature: detect empty alerts zip file
+ bugfix:  preprocess exception messages from ProcessAlerts because Blocking FinishFn parameter content may not contain commas or newlines
+
  22.04.2018 jensb
  feature: relaxed installation prerequisites (Text::CSV_XS now forecast specific, TZ does not need to be defined)
 
@@ -1471,8 +1486,9 @@ sub DWD_OpenData_Timer($)
 
 =pod
 
- @TODO forecast: if a property is not available for a given hour to value of the previous or next hour is to be used/interpolated
+ @TODO forecast: if a property is not available for a given hour the value of the previous or next hour is to be used/interpolated
  @TODO alerts:   queue get commands while cache is updating
+ @TODO history:  https://opendata.dwd.de/weather/weather_reports/poi/
 
 =cut
 
@@ -1519,7 +1535,7 @@ sub DWD_OpenData_Timer($)
       <li>Verify that your FHEM time is correct by entering <code>{localtime()}</code> into the FHEM command line. If not, check the system time and timezone of your FHEM server and adjust appropriately. It may be necessary to add <code>export TZ=`cat /etc/timezone`</code> or something similar to your FHEM start script <code>/etc/init.d/fhem</code> or your system configuration file <code>/etc/profile</code>. If <code>/etc/timezone</code> does not exists or is undefined execute <code>tzselect</code> to find your timezone and write the result into this file. After making changes restart FHEM and enter <code>{$ENV{TZ}}</code> into the FHEM command line to verify. To fix the timezone temporarily without restarting FHEM enter <code>{$ENV{TZ}='Europe/Berlin'}</code> or something similar into the FHEM command line. Again use <code>tzselect</code> to fine a valid timezone name. </li><br>
 
       <li>The weekday of the forecast will be in the language of your FHEM system. Enter <code>{$ENV{LANG}}</code> into the FHEM command line to verify.
-      If nothing is displayed or you see an unexpected language setting, add <code>export LANG=de_DE.UTF-8</code> or something similar to your FHEM start script, restart FHEM and check again. If you get a locale warning when starting FHEM the required language pack might be missing. It can be installed depending on your OS and your preferences (e.g. <code>apt-get install language-pack-de</code> or something similar). </li><br>
+      If nothing is displayed or you see an unexpected language setting, add <code>export LANG=de_DE.UTF-8</code> or something similar to your FHEM start script, restart FHEM and check again. If you get a locale warning when starting FHEM the required language pack might be missing. It can be installed depending on your OS and your preferences (e.g. <code>dpkg-reconfigure locales</code>, <code>apt-get install language-pack-de</code> or something similar). </li><br>
 
       <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. </li><br>
 
@@ -1541,7 +1557,7 @@ sub DWD_OpenData_Timer($)
       </li> <br>
       <li>
           <code>get alerts [&lt;warncell id&gt;]</code><br>
-          Set alert readings for given warncell id. A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/neu_cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). If the attribute <code>alertArea</code> is set, no <i>warncell id</i> must be provided. <br>
+          Set alert readings for given warncell id. A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). If the attribute <code>alertArea</code> is set, no <i>warncell id</i> must be provided. <br>
           If the alerts cache is empty or older than 15 minutes the cache is updated first and the operation is non-blocking. If the cache is valid the operation is blocking. If a cache update is already in progress the operation fails. <br>
           To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
       </li> <br>
@@ -1590,7 +1606,7 @@ sub DWD_OpenData_Timer($)
   <ul> <br>
       <li>alertArea &lt;warncell id&gt;, default: none<br>
           Setting alertArea enables automatic updates of the alerts cache every 15 minutes.
-          A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/neu_cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
+          A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
       </li>
       <li>alertLanguage [DE|EN], default: DE<br>
           Language of descriptive alert properties.</a>.
@@ -1716,9 +1732,9 @@ sub DWD_OpenData_Timer($)
 <ul>
   Der Deutsche Wetterdienst (DWD) stellt Wetterdaten &uuml;ber den <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html">Open Data Server</a> zur Verf&uuml;gung. Die Verwendung dieses Dienstes und der vom DWD zur Verf&uuml;gung gestellten Daten unterliegt den auf der Webseite beschriebenen Bedingungen. Einen &Uuml;berblick &uuml;ber die verf&uuml;gbaren Daten findet man in der Tabelle <a href="https://www.dwd.de/DE/leistungen/opendata/help/inhalt_allgemein/opendata_content_de_en_xls.xls">OpenData_weather_content.xls</a>. <br><br>
 
-  Eine detaillierte Modulbeschreibung gibt es auf Englisch - siehe die englische Modulhilfe von <a href="commandref.html#DWD_OpenData">DWD_OpenData</a>. <br><br>
+  Eine Installationsbeschreibung findet sich in der <a href="https://wiki.fhem.de/wiki/DWD_OpenData">FHEMWiki</a>. <br><br>
 
-  Dieses Modul erfordert zus&auml;tzliche Installationsschritte und ist daher f&uuml;r Anf&auml;nger ungeeignet. <br>
+  Eine detaillierte Modulbeschreibung gibt es auf Englisch - siehe die englische Modulhilfe von <a href="commandref.html#DWD_OpenData">DWD_OpenData</a>. <br>
 
 </ul> <br>
 
