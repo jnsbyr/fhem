@@ -1,37 +1,38 @@
-=pod encoding UTF-8 (äöüÄÖÜ€)
-########################################################################################
-#
+# -----------------------------------------------------------------------------
+# encoding UTF-8 (äöüÄÖÜ€)
 # $Id: DWDODweblink.pm 16 2018-04-13 21:03:00Z jensb $
-#
-#	An FHEM Perl module to provide weblink visualisations of current conditions and
-#	forecasts data of the DWD OpenData module.
-#
-########################################################################################
-#
-#  LICENSE AND COPYRIGHT
-#
-#  Copyright (C) 2015 jensb
-#
-#  All rights reserved
-#
-#  This script is free software; you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
-#  (at your option) any later version.
-#
-#  The GNU General Public License can be found at
-#  http://www.gnu.org/copyleft/gpl.html.
-#  A copy is found in the textfile GPL.txt and important notices to the license
-#  from the author is found in LICENSE.txt distributed with these scripts.
-#
-#  This script is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
-#
-#  This copyright notice MUST APPEAR in all copies of the script!
-#
-########################################################################################
+# -----------------------------------------------------------------------------
+
+=head1 NAME
+
+DWDODweblink - A FHEM Perl module to provide weblink visualisations of current conditions and
+forecasts data of the DWD OpenData module.
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2015 Jens B.
+
+All rights reserved
+
+This script is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+The GNU General Public License can be found at
+
+http://www.gnu.org/copyleft/gpl.html.
+
+A copy is found in the textfile GPL.txt and important notices to the license
+from the author is found in LICENSE.txt distributed with these scripts.
+
+This script is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+This copyright notice MUST APPEAR in all copies of the script!
+
 =cut
 
 package main;
@@ -50,7 +51,7 @@ use constant DWDOD_TEMP_WARM    => 25; # > orange
 use constant DWDOD_PRECIP_RAIN  => 50; # > blue
 
 use constant DWDOD_COLOR_FREEZE => "blue";    # light background -> blue, dark background -> skyblue
-use constant DWDOD_COLOR_WARM   => "orange"; 
+use constant DWDOD_COLOR_WARM   => "orange";
 use constant DWDOD_COLOR_RAIN   => "blue";    # light background -> blue, dark background -> skyblue
 
 # weather code to FHEM weather icon name mapping
@@ -442,15 +443,21 @@ sub DWDOD_GetCSS() {
   return $style;
 }
 
-=item DWDOD_IsDay($$)
+=head1 FUNCTIONS
 
-  check if it is day at given time
+=head2 DWDOD_IsDay($$)
 
-  @TODO result is only defined for location defined in FHEM global
+=over 3
 
-  @param:  epoch time, scalar
-           altitude, scalar, see documentation of module SUNRISE_EL
-  @return: bool, scalar
+=item * param time:     epoch time
+
+=item * param altitude: see documentation of module SUNRISE_EL
+
+=item * return 1 if sun is up at given time, otherwise 0
+
+=back
+
+note: result is only defined for location defined in FHEM global
 
 =cut
 
@@ -467,23 +474,29 @@ sub DWDOD_IsDay($$) {
   my $sunset = ($ssHour*60 + $ssMin)*60 + $ssSec;
 
   #Log 3, "DWDOD_IsDay: $hour:$min:$sec  $srHour:$srMin:$srSec $ssHour:$ssMin:$ssSec";
-  
+
   return $t >= $sunrise && $t <= $sunset;
 }
 
-=item DWDOD_IsActive($$$$)
+=head2 DWDOD_IsActive($$$)
 
-  @param start range start
-  @param end   range end
-  @param value value
+=over 4
 
-  @return 1 if value is inside range, otherwise 0
+=item * param start: epoch time range start
+
+=item * param end:   epoch time range end
+
+=item * param time   epoch time
+
+=item * return 1 if time is inside range, otherwise 0
+
+=back
 
 =cut
 
 sub DWDOD_IsActive($$$) {
   my ($start, $end, $time) = @_;
-  
+
   if ($start && $end) {
     return $time >= $start && $time < $end;
   } else {
@@ -491,38 +504,51 @@ sub DWDOD_IsActive($$$) {
   }
 }
 
-=item DWDOD_IsInRange($$$$)
+=head2 DWDOD_IsInRange($$$$)
 
-  @param start 1st range start (incl.)
-  @param end   1st range end   (excl.)
-  @param start 2nd range start (incl.)
-  @param end   2nd range end   (excl.)
+=over 5
 
-  @return 1 if 2nd range overlaps with 1st range, otherwise 0
+=item * param start: 1st range start (incl.)
+
+=item * param end:   1st range end   (excl.)
+
+=item * param start: 2nd range start (incl.)
+
+=item * param end:   2nd range end   (excl.)
+
+=item * return 1 if 2nd range overlaps with 1st range, otherwise 0
+
+=back
 
 =cut
 
 sub DWDOD_IsInRange($$$$) {
   my ($start, $end, $iStart, $iEnd) = @_;
-  
+
   if ($start && $end) {
-    return ($iStart < $start && $iEnd >= $end) || 
-           ($iStart >= $start && $iStart < $end) || 
+    return ($iStart < $start && $iEnd >= $end) ||
+           ($iStart >= $start && $iStart < $end) ||
            ($iEnd >= $start && $iEnd < $end);
   } else {
     return 0;
   }
 }
 
-=item DWDOD_IconIMGTag($$;$)
+=head2 DWDOD_IconIMGTag($$;$)
 
-  get FHEM weather icon for weather code
+get FHEM weather icon for weather code
 
-  @param weatherCode scalar
-  @param cloudCover  [1/8], scalar
-  @param time        epoch time or undef for day or 1 for night, scalar, optional
-  
-  @return HTML string, scalar
+=over 5
+
+=item * param weatherCode
+
+=item * param cloudCover:  [1/8]
+
+=item * param time:        epoch time or undef for day or 1 for night, scalar, optional
+
+=item * return HTML string
+
+=back
 
 =cut
 
@@ -557,15 +583,21 @@ sub DWDOD_IconIMGTag($$;$) {
   }
 }
 
-=item DWDOD_AsHtmlH($;$$)
+=head2 DWDOD_AsHtmlH($;$$)
 
-  create forecast display as a horizontal CSS table with two icons per day
+create forecast display as a horizontal CSS table with two icons per day
 
-  @param   device name, scalar
-  @param   number of days, scalar, optional, default 4 (including today)
-  @param   flag to use minimum of ground and minimum temperature, scalar, optional, default 0
-  
-  @return  HTML string, scalar
+=over 4
+
+=item * param device name
+
+=item * param number of days: optional, default 4 (including today)
+
+=item * param flag:           use minimum of ground and minimum temperature, optional, default 0
+
+=item * return HTML string
+
+=back
 
 =cut
 
@@ -609,7 +641,7 @@ sub DWDOD_AsHtmlH($;$$) {
       push(@offsets, 2);
     }
   }
-  
+
   # weekday and time
   my $hash = $defs{$d};
   $ret .= '<div class="weatherHeaderRow">';
@@ -625,7 +657,7 @@ sub DWDOD_AsHtmlH($;$$) {
         $index = 0;
       }
     }
-    
+
     my $date = ReadingsVal($d, "fc".$day."_date", "?");
     my $weekday = ReadingsVal($d, "fc".$day."_weekday", "?");
     my $hourPrefix = "fc".$day."_".$index;
@@ -636,7 +668,7 @@ sub DWDOD_AsHtmlH($;$$) {
     } else {
       $ret .= sprintf('<div class="weatherWeekday">%s</div>', $dayAndTime[$i+1]);
     }
-    
+
     if ($i == -1) {
       $startTime[$i+1] = $now;
     } else {
@@ -692,7 +724,7 @@ sub DWDOD_AsHtmlH($;$$) {
             if (!defined($alertMessages{'NOW'})) {
               $alertMessages{'NOW'} = "";
             }
-            if (DWDOD_IsActive($start, $end, $now)) {      
+            if (DWDOD_IsActive($start, $end, $now)) {
               $alertMessages{'NOW'} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s bis %s<br>%s<p>%s</div>', ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ReadingsVal($d, "a_".$a."_areaDesc", "?"), ReadingsVal($d, "a_".$a."_expires", "?"), ReadingsVal($d, "a_".$a."_headline", "?"), ReadingsVal($d, "a_".$a."_description", "?"));
             } else {
               $alertMessages{'NOW'} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s von %s bis %s<br>%s<p>%s</div>', ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ReadingsVal($d, "a_".$a."_areaDesc", "?"), ReadingsVal($d, "a_".$a."_onset", "?"), ReadingsVal($d, "a_".$a."_expires", "?"), ReadingsVal($d, "a_".$a."_headline", "?"), ReadingsVal($d, "a_".$a."_description", "?"));
@@ -700,9 +732,9 @@ sub DWDOD_AsHtmlH($;$$) {
           }
         }
       }
-    }  
-  }  
-  
+    }
+  }
+
   # weather icon
   $ret .= '<div class="weatherDataRow">';
   for(my $i=-1; $i<$items; $i++) {
@@ -725,7 +757,7 @@ sub DWDOD_AsHtmlH($;$$) {
     if (defined($alertMessages{$alertKey})) {
       # @TODO vary weatherAlertBoxCenter
       $imageTag .= sprintf('<div class="weatherAlertIcon" title="Wetterwarnungen" tabindex="0"><div class="weatherOverlay"></div> <div class="weatherAlertBoxCenter"><a href="#close" title="Close" class="weatherAlertsClose">x</a><div class="weaterAlertsTitle">Wetterwarnungen %s</div>%s</div></div>', $dayAndTime[$i+1], $alertMessages{$alertKey});
-    }        
+    }
     $ret .= sprintf('<div class="weatherIcon">%s</div>', $imageTag);
   }
   $ret .= '</div>';
@@ -824,7 +856,7 @@ sub DWDOD_AsHtmlH($;$$) {
         }
         $ret .= sprintf('<div class="weatherTemperature" style="color:%s">%s °C</div>', $tempColor, $tempValue);
       }
-    } else {    
+    } else {
       # 2nd to 7th day
       my ($tempLabel, $tempValue);
       my $dayPrefix = "fc".$day;
@@ -965,21 +997,18 @@ sub DWDOD_AsHtmlH($;$$) {
 
 1;
 
-=pod
-###################################################################################################
+# -----------------------------------------------------------------------------
 #
 #	TODO
 #
 # - size of condition img not always identical
 # - feature: use DWD alert signs
 #
-###################################################################################################
+# -----------------------------------------------------------------------------
 
-###################################################################################################
+# -----------------------------------------------------------------------------
 #
 #	CHANGES
-#
-###################################################################################################
 #
 # 2018-04-02	feature: weather alert indication reimplemented for DWD_OpenData
 #
@@ -1014,10 +1043,10 @@ sub DWDOD_AsHtmlH($;$$) {
 #
 #	2015-10-11	initial release
 #
-###################################################################################################
-=cut
+# -----------------------------------------------------------------------------
 
-=pod
+=head1 INSTALLATION AND CONFIGURATION
+
 =begin html
 
 <a name="DWD_OpenDatautils"></a>
@@ -1025,12 +1054,12 @@ sub DWDOD_AsHtmlH($;$$) {
 <ul>
 <li>
     The function DWDOD_AsHtmlH returns the HTML code for a vertically arranged weather forecast.<br><br>
-    
-    The function accepts two optional parameters to limit the number of icons to display (1...7, default 4) 
+
+    The function accepts two optional parameters to limit the number of icons to display (1...7, default 4)
     and to use minimum of ground and minimum temperature instead of the minimum temperature (0/1, default 0).<br><br>
-    
+
     In your DWD_OpenData device the properties TT, Tx, Tn, Tg, dd, fx, RR12, RRp12, ww, wwd and Nf must be enabled.<br><br>
-    
+
     Example: <code>define MyForecastWeblink weblink htmlCode { DWDOD_AsHtmlH("MyWeather") }</code> <br><br>
 
     where "MyWeather" is the name of your DWD_Opendata device. <br><br>
