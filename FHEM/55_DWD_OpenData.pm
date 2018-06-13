@@ -1,37 +1,41 @@
-﻿=pod encoding UTF-8 (äöüÄÖÜ€)
-########################################################################################
-#
-# $Id: 55_DWD_OpenData.pm 16745 2018-05-15 20:07:52Z jensb $
-#
-# FHEM module for DWD Open Data Server
-#
-########################################################################################
-#
-#  LICENSE AND COPYRIGHT
-#
-#  Copyright (C) 2018 jensb
-#  Copyright (C) 2018 JoWiemann (use of HttpUtils instead of LWP::Simple)
-#
-#  All rights reserved
-#
-#  This script is free software; you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
-#  (at your option) any later version.
-#
-#  The GNU General Public License can be found at
-#  http://www.gnu.org/copyleft/gpl.html.
-#  A copy is found in the textfile GPL.txt and important notices to the license
-#  from the author is found in LICENSE.txt distributed with these scripts.
-#
-#  This script is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
-#
-#  This copyright notice MUST APPEAR in all copies of the script!
-#
-########################################################################################
+﻿# -----------------------------------------------------------------------------
+# $Id: 55_DWD_OpenData.pm 16745 2018-06-11 19:40:00Z jensb $
+# -----------------------------------------------------------------------------
+
+=encoding UTF-8
+
+=head1 NAME
+
+DWD_OpenData - A FHEM Perl module to retrieve forecasts and alerts from the
+DWD Open Data Server.
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2018 Jens B.
+
+Copyright (C) 2018 JoWiemann (use of HttpUtils instead of LWP::Simple)
+
+All rights reserved
+
+This script is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+The GNU General Public License can be found at
+
+http://www.gnu.org/copyleft/gpl.html.
+
+A copy is found in the textfile GPL.txt and important notices to the license
+from the author is found in LICENSE.txt distributed with these scripts.
+
+This script is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+This copyright notice MUST APPEAR in all copies of the script!
+
 =cut
 
 package main;
@@ -67,12 +71,17 @@ my @dwd_alerts          = [ undef, undef ];
 my @dwd_alerts_received = [ undef, undef ];
 my @dwd_alerts_updating = [ undef, undef ];
 
-=item DWD_OpenData_Initialize($)
+=head1 FUNCTIONS
 
-  @param hash hash of DWD_OpenData device
+=head2 DWD_OpenData_Initialize($)
 
-  description
-    FHEM module initialization function
+FHEM module I<Initialize> function
+
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=back
 
 =cut
 
@@ -210,15 +219,19 @@ sub DWD_OpenData_Initialize($) {
                    "starkes Gewitter mit Graupel oder Hagel");
 }
 
-=item DWD_OpenData_Define($$)
+=head2 DWD_OpenData_Define($$)
 
-  @param  hash hash of DWD_OpenData device
-  @param  def  module define parameters, will be ignored
+FHEM module I<DefFn>
 
-  @return undef on success or error message
+=over
 
-  description
-    FHEM module DefFn
+=item * param hash: hash of DWD_OpenData device
+
+=item * param def: module define parameters, will be ignored
+
+=item * return undef on success or error message
+
+=back
 
 =cut
 
@@ -242,13 +255,17 @@ sub DWD_OpenData_Define($$) {
   return undef;
 }
 
-=item DWD_OpenData_Undef($$)
+=head2 DWD_OpenData_Undef($$)
 
-  @param hash hash of DWD_OpenData device
-  @param arg  module undefine arguments, will be ignored
+FHEM module I<UndefFn>
 
-  description
-    FHEM module UndefFn ($hash is DWD_OpenData)
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=item * param arg: module undefine arguments, will be ignored
+
+=back
 
 =cut
 
@@ -261,12 +278,15 @@ sub DWD_OpenData_Undef($$) {
   return undef;
 }
 
-=item DWD_OpenData_Undef($)
+=head2 DWD_OpenData_Undef($)
 
-  @param hash hash of DWD_OpenData device
+FHEM module I<ShutdownFn>
 
-  description
-    FHEM module ShutdownFn ($hash is DWD_OpenData)
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=back
 
 =cut
 
@@ -289,17 +309,23 @@ sub DWD_OpenData_Shutdown($) {
   return undef;
 }
 
-=item DWD_OpenData_Attr(@)
+=head2 DWD_OpenData_Attr(@)
 
-  @param  command   "set" or "del"
-  @param  name      name of DWD_OpenData device
-  @param  attribute attribute name
-  @param  value     attribute value
+FHEM module I<AttrFn>
 
-  @return undef on success or error message
+=over
 
-  description:
-    FHEM module AttrFn
+=item * param command: "set" or "del"
+
+=item * param name: name of DWD_OpenData device
+
+=item * param attribute: attribute name
+
+=item * param value: attribute value
+
+=item * return C<undef> on success or error message
+
+=back
 
 =cut
 
@@ -361,15 +387,19 @@ sub DWD_OpenData_GetAlerts($$);
 sub DWD_OpenData_UpdateAlerts($$);
 sub DWD_OpenData_IsCommuneUnionWarncellId($);
 
-=item DWD_OpenData_Get($@)
+=head2 DWD_OpenData_Get($@)
 
-  @param  hash hash of DWD_OpenData device
-  @param  a    array of FHEM command line arguments, min. length 2, a[1] holds get command
+FHEM module I<GetFn>
 
-  @return requested data or error message
+=over
 
-  description:
-    FHEM module GetFn
+=item * param hash: hash of DWD_OpenData device
+
+=item * param a: array of FHEM command line arguments, min. length 2, a[1] holds get command
+
+=item * return requested data or error message
+
+=back
 
 =cut
 
@@ -446,12 +476,17 @@ sub DWD_OpenData_Get($@)
   return $result;
 }
 
-=item DWD_OpenData_Timelocal($$)
+=head2 DWD_OpenData_Timelocal($$)
 
- @param  hash hash of DWD_OpenData device
-         ta   localtime array in device timezone
+=over
 
- @return epoch seconds
+=item * param hash: hash of DWD_OpenData device
+
+=item * param ta: localtime array in device timezone
+
+=item * return epoch seconds
+
+=back
 
 =cut
 
@@ -469,12 +504,17 @@ sub DWD_OpenData_Timelocal($@) {
   return $t;
 }
 
-=item DWD_OpenData_Localtime(@)
+=head2 DWD_OpenData_Localtime(@)
 
- @param  hash hash of DWD_OpenData device
- @param  t    epoch seconds
+=over
 
- @return localtime array in device timezone
+=item * param hash: hash of DWD_OpenData device
+
+=item * param t:    epoch seconds
+
+=item * return localtime array in device timezone
+
+=back
 
 =cut
 
@@ -492,12 +532,17 @@ sub DWD_OpenData_Localtime(@) {
   return @ta;
 }
 
-=item DWD_OpenData_FormatDateTimeLocal($$)
+=head2 DWD_OpenData_FormatDateTimeLocal($$)
 
- @param  hash hash of DWD_OpenData device
- @param  t    epoch seconds
+=over
 
- @return date time string with with format "YYYY-MM-DD HH:MM:SS" in device timezone
+=item * param hash: hash of DWD_OpenData device
+
+=item * param t: epoch seconds
+
+=item * return date time string with with format "YYYY-MM-DD HH:MM:SS" in device timezone
+
+=back
 
 =cut
 
@@ -505,12 +550,17 @@ sub DWD_OpenData_FormatDateTimeLocal($$) {
   return strftime('%Y-%m-%d %H:%M:%S', DWD_OpenData_Localtime(@_));
 }
 
-=item DWD_OpenData_FormatDateLocal($$)
+=head2 DWD_OpenData_FormatDateLocal($$)
 
- @param  hash hash of DWD_OpenData device
- @param  t    epoch seconds
+=over
 
- @return date string with with format "YYYY-MM-DD" in device timezone
+=item * param hash: hash of DWD_OpenData device
+
+=item * param t: epoch seconds
+
+=item * return date string with with format "YYYY-MM-DD" in device timezone
+
+=back
 
 =cut
 
@@ -518,12 +568,17 @@ sub DWD_OpenData_FormatDateLocal($$) {
   return strftime('%Y-%m-%d', DWD_OpenData_Localtime(@_));
 }
 
-=item DWD_OpenData_FormatTimeLocal($$)
+=head2 DWD_OpenData_FormatTimeLocal($$)
 
- @param  hash hash of DWD_OpenData device
- @param  t    epoch seconds
+=over
 
- @return time string with format "HH:MM" in device timezone
+=item * param hash: hash of DWD_OpenData device
+
+=item * param t: epoch seconds
+
+=item * return time string with format "HH:MM" in device timezone
+
+=back
 
 =cut
 
@@ -531,12 +586,17 @@ sub DWD_OpenData_FormatTimeLocal($$) {
   return strftime('%H:%M', DWD_OpenData_Localtime(@_));
 }
 
-=item DWD_OpenData_FormatWeekdayLocal($$)
+=head2 DWD_OpenData_FormatWeekdayLocal($$)
 
- @param  hash hash of DWD_OpenData device
- @param  t    epoch seconds
+=over
 
- @return abbreviated weekday name in device timezone
+=item * param hash: hash of DWD_OpenData device
+
+=item * param t: epoch seconds
+
+=item * return abbreviated weekday name in device timezone
+
+=back
 
 =cut
 
@@ -544,12 +604,17 @@ sub DWD_OpenData_FormatWeekdayLocal($$) {
   return strftime('%a', DWD_OpenData_Localtime(@_));
 }
 
-=item DWD_OpenData_ParseDateTimeLocal($$)
+=head2 DWD_OpenData_ParseDateTimeLocal($$)
 
- @param  hash hash of DWD_OpenData device
-         s    date string with format "YYYY-MM-DD HH:MM:SS" in device timezone
+=over
 
- @return epoch seconds or undef on error
+=item * param hash: hash of DWD_OpenData device
+
+=item * param s: date string with format "YYYY-MM-DD HH:MM:SS" in device timezone
+
+=item * return epoch seconds or C<undef> on error
+
+=back
 
 =cut
 
@@ -560,12 +625,17 @@ sub DWD_OpenData_ParseDateTimeLocal($$) {
   return $t;
 }
 
-=item DWD_OpenData_ParseDateLocal($$)
+=head2 DWD_OpenData_ParseDateLocal($$)
 
- @param  hash hash of DWD_OpenData device
-         s    date string with format "YYYY-MM-DD" in device timezone
+=over
 
- @return epoch seconds or undef on error
+=item * param hash: hash of DWD_OpenData device
+
+=item * param s: date string with format "YYYY-MM-DD" in device timezone
+
+=item * return epoch seconds or C<undef> on error
+
+=back
 
 =cut
 
@@ -576,11 +646,15 @@ sub DWD_OpenData_ParseDateLocal($$) {
   return $t;
 }
 
-=item DWD_OpenData_ParseCAPTime($)
+=head2 DWD_OpenData_ParseCAPTime($)
 
- @param  t time string with format "YYYY-MM-DDThh:mm:ssZZZ:ZZ"
+=over
 
- @return epoch seconds
+=item * param s: time string with format "YYYY-MM-DDThh:mm:ssZZZ:ZZ"
+
+=item * return epoch seconds
+
+=back
 
 =cut
 
@@ -592,11 +666,15 @@ sub DWD_OpenData_ParseCAPTime($) {
   return Time::Piece->strptime($s, '%Y-%m-%dT%H:%M:%S%z')->epoch;
 }
 
-=item DWD_OpenData_IsCommuneUnionWarncellId($)
+=head2 DWD_OpenData_IsCommuneUnionWarncellId($)
 
- @param  $warncellId numeric wanrcell id
+=over
 
- @return true if warncell id belongs to commune union group
+=item * param warncellId: numeric wanrcell id
+
+=item * return true if warncell id belongs to commune union group
+
+=back
 
 =cut
 
@@ -606,13 +684,19 @@ sub DWD_OpenData_IsCommuneUnionWarncellId($) {
          || $warncellId == DWD_OD_UPDATE_COMMUNEUNIONS || $warncellId == DWD_OD_UPDATE_ALL? 1 : 0;
 }
 
-=item DWD_OpenData_RotateForecast($$;$)
+=head2 DWD_OpenData_RotateForecast($$;$)
 
- @param  $hash    hash of DWD_OpenData device
- @param  $station station name, string
- @param  $today   epoch of today 00:00, optional
+=over
 
- @return count of available forecast days
+=item * param hash: hash of DWD_OpenData device
+
+=item * param station: station name, string
+
+=item * param today: epoch of today 00:00, optional
+
+=item * return count of available forecast days
+
+=back
 
 =cut
 
@@ -691,10 +775,15 @@ sub DWD_OpenData_RotateForecast($$;$)
 
 sub DWD_OpenData_ProcessForecast($$$);
 
-=item DWD_OpenData_GetForecast($$)
+=head2 DWD_OpenData_GetForecast($$)
 
- @param  $hash    hash of DWD_OpenData device
- @param  $station station name, string
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=item * param station: station name, string
+
+=back
 
 =cut
 
@@ -748,13 +837,19 @@ sub DWD_OpenData_GetForecast($$)
   }
 }
 
-=item DWD_OpenData_ProcessForecast($$$)
+=head2 DWD_OpenData_ProcessForecast($$$)
 
- @param  param       parameter hash from call to HttpUtils_NonblockingGet
- @param  httpError   nothing or HTTP error string
- @param  fileContent data retrieved from URL
+=over
 
- @return undef on success or error message
+=item * param param: parameter hash from call to HttpUtils_NonblockingGet
+
+=item * param httpError: nothing or HTTP error string
+
+=item * param fileContent: data retrieved from URL
+
+=item * return C<undef> on success or error message
+
+=back
 
 =cut
 
@@ -945,13 +1040,18 @@ sub DWD_OpenData_ProcessForecast($$$)
 }
 
 sub DWD_OpenData_GetAlertsBlockingFn($);
-sub DWD_OpenData_GetAlertsFinishFn(;$$$$);
+sub DWD_OpenData_GetAlertsFinishFn(@);
 sub DWD_OpenData_GetAlertsAbortFn($);
 
-=item DWD_OpenData_GetAlerts($$)
+=head2 DWD_OpenData_GetAlerts($$)
 
- @param  $hash       hash of DWD_OpenData device
- @param  $warncellId id of warncell, number
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=item * param warncellId: numeric id of warncell, may also be C<DWD_OD_UPDATE_DISTRICTS>, C<DWD_OD_UPDATE_COMMUNEUNIONS> or C<DWD_OD_UPDATE_ALL>
+
+=back
 
 =cut
 
@@ -1001,18 +1101,22 @@ sub DWD_OpenData_GetAlerts($$)
 
 sub DWD_OpenData_ProcessAlerts($$$);
 
-=item DWD_OpenData_GetAlertsBlockingFn($)
+=head2 DWD_OpenData_GetAlertsBlockingFn($)
 
- BlockingStart BlockingFn callback
+BlockingCall I<BlockingFn> callback
 
- @param  $hash hash of DWD_OpenData device
+=over
 
- @return result for DWD_OpenData_GetAlertsFinishFn
+=item * param hash: hash of DWD_OpenData device
 
- ATTENTION: This method is executed in a different process than FHEM.
-            The device hash is from the time of the process initiation.
-            Any changes to the device hash or readings are not visible
-            in FHEM.
+=item * return result required by function L</DWD_OpenData_GetAlertsFinishFn(@)>
+
+=back
+
+ATTENTION: This method is executed in a different process than FHEM.
+           The device hash is from the time of the process initiation.
+           Any changes to the device hash or readings are not visible
+           in FHEM.
 
 =cut
 
@@ -1044,16 +1148,20 @@ sub DWD_OpenData_GetAlertsBlockingFn($)
   return $result;
 }
 
-=item DWD_OpenData_ProcessAlerts($$$)
+=head2 DWD_OpenData_ProcessAlerts($$$)
 
- @param  $hash hash of DWD_OpenData device
+=over
 
- @return result for DWD_OpenData_GetAlertsFinishFn
+=item * param hash: hash of DWD_OpenData device
 
- ATTENTION: This method is executed in a different process than FHEM.
-            The device hash is from the time of the process initiation.
-            Any changes to the device hash or readings are not visible
-            in FHEM.
+=item * return result required by function L</DWD_OpenData_GetAlertsFinishFn(@)>
+
+=back
+
+ATTENTION: This method is executed in a different process than FHEM.
+           The device hash is from the time of the process initiation.
+           Any changes to the device hash or readings are not visible
+           in FHEM.
 
 =cut
 
@@ -1227,15 +1335,25 @@ sub DWD_OpenData_ProcessAlerts($$$)
   return [$name, $errorMessage, $warncellId, $time];
 }
 
-=item DWD_OpenData_GetAlertsFinishFn(;$$$$)
+=head2 DWD_OpenData_GetAlertsFinishFn(@)
 
- BlockingStart FinishFn callback
+BlockingCall I<FinishFn> callback, expects array returned by function L</DWD_OpenData_GetAlertsBlockingFn($)> as single parameter
 
- @param $result return value from DWD_OpenData_GetAlertsBlockingFn
+=over
+
+=item * param name: name of DWD_OpenData device
+
+=item * param errorMessage: empty string or processing error message 
+
+=item * param warncellId: numeric warncell id for which alers have been requested, may also be C<DWD_OD_UPDATE_DISTRICTS>, C<DWD_OD_UPDATE_COMMUNEUNIONS> or C<DWD_OD_UPDATE_ALL>
+
+=item * param time: epoch time when alerts where received
+
+=back
 
 =cut
 
-sub DWD_OpenData_GetAlertsFinishFn(;$$$$)
+sub DWD_OpenData_GetAlertsFinishFn(@)
 {
   my ($name, $errorMessage, $warncellId, $time) = @_;
 
@@ -1314,11 +1432,15 @@ sub DWD_OpenData_GetAlertsFinishFn(;$$$$)
   }
 }
 
-=item DWD_OpenData_GetAlertsAbortFn($)
+=head2 DWD_OpenData_GetAlertsAbortFn($)
 
- BlockingStart AbortFn callback
+BlockingCall I<AbortFn> callback
 
- @param $hash hash of DWD_OpenData device
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=back
 
 =cut
 
@@ -1332,14 +1454,19 @@ sub DWD_OpenData_GetAlertsAbortFn($)
   readingsSingleUpdate($hash, 'state', "alerts error: retrieving weather alerts failed, $errorMessage", 1);
 }
 
-=item DWD_OpenData_UpdateAlerts($$)
+=head2 DWD_OpenData_UpdateAlerts($$)
 
- update alert readings for given warncell id from global alerts list
+update alert readings for given warncell id from global alerts list
 
- @param $hash       hash of DWD_OpenData device
- @param $warncellId numeric warncell id
+=over
 
- @return undef or error message
+=item * param hash: hash of DWD_OpenData device
+
+=item * param warncellId: numeric warncell id greater zero
+
+=item * return C<undef> or error message
+
+=back
 
 =cut
 
@@ -1405,9 +1532,13 @@ sub DWD_OpenData_UpdateAlerts($$)
   return undef;
 }
 
-=item DWD_OpenData_Timer($)
+=head2 DWD_OpenData_Timer($)
 
- @param  $hash    hash of DWD_OpenData device
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=back
 
 =cut
 
@@ -1456,51 +1587,58 @@ sub DWD_OpenData_Timer($)
 1;
 
 # -----------------------------------------------------------------------------
+#
+#	CHANGES
+#
+# 13.05.2018 jensb
+# bugfix: total alerts in cache#
+#
+# 06.05.2018 jensb
+# feature: detect empty alerts zip file
+# bugfix:  preprocess exception messages from ProcessAlerts because Blocking FinishFn parameter content may not contain commas or newlines
+#
+# 22.04.2018 jensb
+# feature: relaxed installation prerequisites (Text::CSV_XS now forecast specific, TZ does not need to be defined)
+#
+# 16.04.2018 jensb
+# bugfix: alerts push on scalar
+#
+# 13.04.2018 jensb
+# feature: forecast weekday reading
+#
+# 28.03.2018 jensb
+# feature: support for CAP alerts
+#
+# 22.03.2018 jensb
+# bugfix: replaced trunc with round when calculating delta days to cope with summertime
+#
+# 18.02.2018 jensb
+# feature: LWP::Simple replaced by HttpUtils_NonblockingGet (provided by JoWiemann)
+#
+# -----------------------------------------------------------------------------
 
-=pod
+# -----------------------------------------------------------------------------
+#
+# @TODO forecast: if a property is not available for a given hour the value of the previous or next hour is to be used/interpolated
+# @TODO alerts:   queue get commands while cache is updating
+# @TODO history:  https://opendata.dwd.de/weather/weather_reports/poi/
+#
+# -----------------------------------------------------------------------------
 
- CHANGES
+=head1 FHEM COMMANDREF METADATA
 
- 13.05.2018 jensb
- bugfix: total alerts in cache
+=over
 
- 06.05.2018 jensb
- feature: detect empty alerts zip file
- bugfix:  preprocess exception messages from ProcessAlerts because Blocking FinishFn parameter content may not contain commas or newlines
-
- 22.04.2018 jensb
- feature: relaxed installation prerequisites (Text::CSV_XS now forecast specific, TZ does not need to be defined)
-
- 16.04.2018 jensb
- bugfix: alerts push on scalar
-
- 13.04.2018 jensb
- feature: forecast weekday reading
-
- 28.03.2018 jensb
- feature: support for CAP alerts
-
- 22.03.2018 jensb
- bugfix: replaced trunc with round when calculating delta days to cope with summertime
-
- 18.02.2018 jensb
- feature: LWP::Simple replaced by HttpUtils_NonblockingGet (provided by JoWiemann)
-
-=cut
-
-=pod
-
- @TODO forecast: if a property is not available for a given hour the value of the previous or next hour is to be used/interpolated
- @TODO alerts:   queue get commands while cache is updating
- @TODO history:  https://opendata.dwd.de/weather/weather_reports/poi/
-
-=cut
-
-
-=pod
 =item device
+
 =item summary DWD Open Data weather forecast
+
 =item summary_DE DWD Open Data Wettervorhersage
+
+=back
+
+=head1 INSTALLATION AND CONFIGURATION
+
 =begin html
 
 <a name="DWD_OpenData"></a>
@@ -1582,12 +1720,12 @@ sub DWD_OpenData_Timer($)
       <li>disable {0|1}, default: 0<br>
           Disable fetching data.
       </li><br>
-      <li>timezone <tz>, default: OS dependent<br>
+      <li>timezone &lt;tz&gt;, default: OS dependent<br>
           <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">IANA TZ string</a> for date and time readings (e.g. "Europe/Berlin"), can be used to assume the perspective of a station that is in a different timezone or if your OS timezone settings do not match your local timezone. Alternatively you may use <code>tzselect</code> on the Linux command line to find a valid timezone string.
       </li><br>
   </ul>
 
-  forecast related:
+  <b>forecast</b> related:
   <ul> <br>
       <li>forecastStation &lt;station code&gt;, default: none<br>
           Setting forecastStation enables automatic updates every hour.
@@ -1608,7 +1746,7 @@ sub DWD_OpenData_Timer($)
       </li><br>
   </ul>
 
-  alert related:
+  <b>alert</b> related:
   <ul> <br>
       <li>alertArea &lt;warncell id&gt;, default: none<br>
           Setting alertArea enables automatic updates of the alerts cache every 15 minutes.
@@ -1711,12 +1849,13 @@ sub DWD_OpenData_Timer($)
       </li><br>
   </ul>
 
-  Additionally there are global alert readings:
+  Additionally there are some global alert readings:<br><br>
+  
   <ul>
     <ul>
-      <li>a_time       - time the last alert update was downloaded based on the timezone attribute</li>
-      <li>a_count      - number of alerts available for selected warncell id</li>
-      <li>a_copyright  - legal information, must be displayed with forecast data, see DWD usage conditions, not available if count is zero</li>
+      <li>a_time      - time the last alert update was downloaded based on the timezone attribute</li>
+      <li>a_count     - number of alerts available for selected warncell id</li>
+      <li>a_copyright - legal information, must be displayed with forecast data, see DWD usage conditions, not available if count is zero</li>
     </ul>
   </ul> <br>
 

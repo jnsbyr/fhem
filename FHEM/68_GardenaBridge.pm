@@ -1,11 +1,13 @@
 # -----------------------------------------------------------------------------
-# encoding UTF-8 (äöüÄÖÜ€)
 # $Id: 68_GardenaBridge.pm 3 2018-04-21 14:46:00Z jensb $
 # -----------------------------------------------------------------------------
 
+=encoding UTF-8
+
 =head1 NAME
 
-GardenaBridge - Gardena 01251 irrigation valve TCP/IP multi-master server FHEM module
+GardenaBridge - A FHEM Perl TCP/IP server gateway for one or more WiFi 
+controllers of a Gardena 1251 irrigation valve.
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -109,6 +111,16 @@ sub GardenaBridge_Read($)
 }
 
 1;
+
+=head1 FHEM COMMANDREF METADATA
+
+=over
+
+=item device
+
+=item summary TCP/IP server gateway for one or more WiFi controllers of a Gardena 1251 irrigation valve
+
+=back
 
 =head1 INSTALLATION AND CONFIGURATION
 

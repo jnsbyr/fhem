@@ -21,7 +21,7 @@ These two modules allow managing multiple Gardena 01251 irrigation valves using 
 - irrigation amount estimation
 
 #### Installation and Configuration
-The built-in module help (Commandref) provides information on the installation and configuration of the modules. You can use Pod2Html (e.g. at http://search.cpan.org/pod2html) to preview the module help.
+The built-in module help (Commandref) provides information on the installation and configuration of the modules. You can use Pod2Html (e.g. at https://metacpan.org/pod2html) to preview the module help.
 
 #### Status
 - add-on modules
@@ -64,7 +64,7 @@ Widget for displaying forecast data and alerts from the [DWD_OpenData module](ht
 This module is a HTML generator to be used with FHEMWeb to display the forcecast data and alerts retrieved by the DWD_OpenData module in graphical form using the FHEM built-in weather icons. For each day 2 icons are shown. The number of days to be displayed can be configured. In case of a weather alert an alert icon is shown on top of the corresponding weather icon. Clicking or touching the alert icon will open a dialog showing alert details.
 
 #### Installation and Configuration
-Informations on the installation and configuration can be found in the in-line documentation at end of the source file. You can use Pod2Html (e.g. at http://search.cpan.org/pod2html) to preview the module help.
+Informations on the installation and configuration can be found in the in-line documentation at end of the source file. You can use Pod2Html (e.g. at https://metacpan.org/pod2html) to preview the module help.
 
 #### Status
 - add-on module

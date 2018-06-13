@@ -1,11 +1,13 @@
 # -----------------------------------------------------------------------------
-# encoding UTF-8 (äöüÄÖÜ€)
 # $Id: 69_GardenaValve.pm 5 2018-04-21 19:06:00Z jnsbyr $
 # -----------------------------------------------------------------------------
 
+=encoding UTF-8
+
 =head1 NAME
 
-GardenaValve - Gardena 01251 irrigation valve device FHEM module
+GardenaValve - A FHEM Perl module for managing a WiFi controller of a Gardena
+1251 irrigation valve.
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -824,6 +826,17 @@ sub GardenaValve_Poll($)
 # - introduced new low battery warning mode "LOW BAT"
 #
 # -----------------------------------------------------------------------------
+
+
+=head1 FHEM COMMANDREF METADATA
+
+=over
+
+=item device
+
+=item summary WiFi controller device of a Gardena 1251 irrigation valve
+
+=back
 
 =head1 INSTALLATION AND CONFIGURATION
 

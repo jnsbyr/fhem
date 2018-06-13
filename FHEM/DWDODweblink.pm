@@ -1,12 +1,13 @@
 # -----------------------------------------------------------------------------
-# encoding UTF-8 (äöüÄÖÜ€)
 # $Id: DWDODweblink.pm 16 2018-04-13 21:03:00Z jensb $
 # -----------------------------------------------------------------------------
 
+=encoding UTF-8
+
 =head1 NAME
 
-DWDODweblink - A FHEM Perl module to provide weblink visualisations of current conditions and
-forecasts data of the DWD OpenData module.
+DWDODweblink - A FHEM Perl module to visualize the forecasts data and alerts
+of the DWD OpenData module.
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -447,7 +448,7 @@ sub DWDOD_GetCSS() {
 
 =head2 DWDOD_IsDay($$)
 
-=over 3
+=over
 
 =item * param time:     epoch time
 
@@ -480,7 +481,7 @@ sub DWDOD_IsDay($$) {
 
 =head2 DWDOD_IsActive($$$)
 
-=over 4
+=over
 
 =item * param start: epoch time range start
 
@@ -506,7 +507,7 @@ sub DWDOD_IsActive($$$) {
 
 =head2 DWDOD_IsInRange($$$$)
 
-=over 5
+=over
 
 =item * param start: 1st range start (incl.)
 
@@ -538,7 +539,7 @@ sub DWDOD_IsInRange($$$$) {
 
 get FHEM weather icon for weather code
 
-=over 5
+=over
 
 =item * param weatherCode
 
@@ -587,7 +588,7 @@ sub DWDOD_IconIMGTag($$;$) {
 
 create forecast display as a horizontal CSS table with two icons per day
 
-=over 4
+=over
 
 =item * param device name
 
