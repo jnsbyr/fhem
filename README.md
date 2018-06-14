@@ -3,7 +3,8 @@ Modules for the FHEM SmartHome Server
 
 This repository contains several modules for the [FHEM SmartHome Server](https://fhem.de/). Some of these modules are development versions of the FHEM distro modules while other modules are add-ons that are not part of the FHEM distro.
 
-- [Gardena 01251 irrigation valve management](#gardena-01251-irrigation-valve-management)
+- [Gardena 1251 irrigation valve management](#gardena-01251-irrigation-valve-management)
+- [rtl_433 wrapper](#rtl_433-wrapper)
 - [Weather module for DWD](#weather-module-for-dwd)
 - [Widget for DWD weather module](#widget-for-dwd-weather-module)
 
@@ -31,6 +32,25 @@ The built-in module help (Commandref) provides information on the installation a
 - [69_GardenaValve.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/69_GardenaValve.pm)
 
 
+## rtl_433 wrapper
+
+Run [rtl_433](https://github.com/merbanan/rtl_433) to receive data from 433 MHz sensors using a RTL2832 USB stick and convert the output of the rtl_433 process into FHEM readings.
+
+#### Features
+- pass arbitrary command line arguments to rtl_433
+- run rtl_433 asynchronously
+- decode rtl_433 output into readings using regexp
+
+#### Installation and Configuration
+The built-in module help (Commandref) provides essential information on the installation and configuration of the module. You can use Pod2Html (e.g. at https://metacpan.org/pod2html) to preview the module help.
+
+#### Status
+- add-on module
+
+#### File
+- [40_RTL433.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/40_RTL433.pm)
+
+
 ## Weather module for DWD
 
 Weather module for forecast data and alerts provided by the [Deutsche Wetterdienst (DWD) OpenData Server](https://www.dwd.de/DE/leistungen/opendata/opendata.html)
@@ -44,7 +64,7 @@ Weather module for forecast data and alerts provided by the [Deutsche Wetterdien
 - localized weekday names
 
 #### Installation and Configuration
-The built-in module help (Commandref) provides detailed information on the installation and configuration of the module. A step-by-step guide in German language can be found in the [FHEM Wiki](https://wiki.fhem.de/wiki/DWD_OpenData).
+The built-in module help (Commandref) provides detailed information on the installation and configuration of the module. You can use Pod2Html (e.g. at https://metacpan.org/pod2html) to preview the module help. A step-by-step guide in German language can be found in the [FHEM Wiki](https://wiki.fhem.de/wiki/DWD_OpenData).
 
 #### Discussions
 A discussion about the introduction of the module to FHEM can be found in the [FHEM Forum](https://forum.fhem.de/index.php/topic,83097.0.html).
