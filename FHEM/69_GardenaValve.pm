@@ -902,13 +902,13 @@ sub GardenaValve_Poll($)
       </li>
       <li><b>time</b> - the current time of the valve controller, may be used to fine tune <i>timeScale</i></li>
       <li><b>timeOffset</b> - the time offset of the valve controller [s], may be used to fine tune <i>timeScale</i></li>
-      <li><b>voltage</b> - the regulator voltage of the valve controller, should be 3.32 V with a fully charged battery</i></li>
-      <li><b>openCount</b> - number of times the valve was opened since physical device was reset</i></li>
-      <li><b>openCountOverall</b> - total number of times the valve was opened since FHEM device was reset</i></li>
-      <li><b>openDuration</b> - total time [h] the valve was open since physical device was reset</i></li>
-      <li><b>openDurationOverall</b> - total time [h] the valve was open since FHEM device was reset</i></li>
-      <li><b>volumeOverall</b> - total estimated volume [m3] since volumeInitialized, delete reading to reinitialize</i></li>
-      <li><b>volumeInitialized</b> - time the volume was initialized with a value above zero</i></li>
+      <li><b>voltage</b> - the regulator voltage of the valve controller, should be 3.32 V with a fully charged battery</li>
+      <li><b>openCount</b> - number of times the valve was opened since physical device was reset</li>
+      <li><b>openCountOverall</b> - total number of times the valve was opened since FHEM device was reset</li>
+      <li><b>openDuration</b> - total time [h] the valve was open since physical device was reset</li>
+      <li><b>openDurationOverall</b> - total time [h] the valve was open since FHEM device was reset</li>
+      <li><b>volumeOverall</b> - total estimated volume [m3] since volumeInitialized, delete reading to reinitialize</li>
+      <li><b>volumeInitialized</b> - time the volume was initialized with a value above zero</li>
     </ul>
     <p>
 
@@ -920,7 +920,7 @@ sub GardenaValve_Poll($)
       <li><b>schedule</b> - The primary use of the valve controller is to run autonomously by a predefined schedule. This schedule can hold up to 32 entries.
           Each schedule entry consists of a day selector, a start time and a run duration.<br>
           <ul>
-            <li>day selector</i>
+            <li><i>day selector</i>
               <ul>
                 <li><b>all</b> - every day</li>
                 <li><b>2nd</b> - every second day of the year</li>
