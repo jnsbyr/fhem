@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 16745 2018-06-11 19:40:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 16745 2018-06-16 16:01:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -38,7 +38,7 @@ This copyright notice MUST APPEAR in all copies of the script!
 
 =cut
 
-package main;
+package DWD_OpenData;
 
 use strict;
 use warnings;
@@ -53,175 +53,146 @@ use Time::Piece;
 
 use Blocking;
 use HttpUtils;
-use SetExtensions;
-
 
 use feature qw(switch);
 no if $] >= 5.017011, warnings => 'experimental';
 
-use constant DWD_OD_UPDATE_DISTRICTS     => -1;
-use constant DWD_OD_UPDATE_COMMUNEUNIONS => -2;
-use constant DWD_OD_UPDATE_ALL           => -3;
+use constant UPDATE_DISTRICTS     => -1;
+use constant UPDATE_COMMUNEUNIONS => -2;
+use constant UPDATE_ALL           => -3;
 
-my @dwd_dayProperties;
-my @dwd_hourProperties;
-my @dwd_wwdText;
+require Exporter;
+our $VERSION   = 1.009.001;
+our @ISA       = qw(Exporter);
+our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
+our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
 
-my @dwd_alerts          = [ undef, undef ];
-my @dwd_alerts_received = [ undef, undef ];
-my @dwd_alerts_updating = [ undef, undef ];
+my @dayProperties = ( 'Tx', 'Tn', 'Tg', 'Tm', 'ev', 'SS24' );
 
-=head1 FUNCTIONS
+my @hourProperties = ( 'TT', 'Td', 'RR6', 'RRp6', 'RR12', 'RRp12', 'RR24', 'RRp24',
+                       'ww', 'Nf', 'NL', 'NM', 'NH', 'dd', 'ff', 'fx', 'VV', 'PPPP' );
+                       
+my @wwdText = ('Bewölkungsentwicklung nicht beobachtet',
+               'Bewölkung abnehmend',
+               'Bewölkung unverändert',
+               'Bewölkung zunehmend',
+               # 4 Dunst, Rauch, Staub oder Sand
+               'Sicht durch Rauch oder Asche vermindert',
+               'trockener Dunst (relative Feuchte < 80 %)',
+               'verbreiteter Schwebstaub, nicht vom Wind herangeführt',
+               'Staub oder Sand bzw. Gischt, vom Wind herangeführt',
+               'gut entwickelte Staub- oder Sandwirbel',
+               'Staub- oder Sandsturm im Gesichtskreis, aber nicht an der Station',
+               # 10 Trockenereignisse
+               'feuchter Dunst (relative Feuchte > 80 %)',
+               'Schwaden von Bodennebel',
+               'durchgehender Bodennebel',
+               'Wetterleuchten sichtbar, kein Donner gehört',
+               'Niederschlag im Gesichtskreis, nicht den Boden erreichend',
+               'Niederschlag in der Ferne (> 5 km), aber nicht an der Station',
+               'Niederschlag in der Nähe (< 5 km), aber nicht an der Station',
+               'Gewitter (Donner hörbar), aber kein Niederschlag an der Station',
+               'Markante Böen im Gesichtskreis, aber kein Niederschlag an der Station',
+               'Tromben (trichterförmige Wolkenschläuche) im Gesichtskreis',
+               # 20 Ereignisse der letzten Stunde, aber nicht zur Beobachtungszeit
+               'nach Sprühregen oder Schneegriesel',
+               'nach Regen',
+               'nach Schneefall',
+               'nach Schneeregen oder Eiskörnern',
+               'nach gefrierendem Regen',
+               'nach Regenschauer',
+               'nach Schneeschauer',
+               'nach Graupel- oder Hagelschauer',
+               'nach Nebel',
+               'nach Gewitter',
+               # 30 Staubsturm, Sandsturm, Schneefegen oder -treiben
+               'leichter oder mäßiger Sandsturm, an Intensität abnehmend',
+               'leichter oder mäßiger Sandsturm, unveränderte Intensität',
+               'leichter oder mäßiger Sandsturm, an Intensität zunehmend',
+               'schwerer Sandsturm, an Intensität abnehmend',
+               'schwerer Sandsturm, unveränderte Intensität',
+               'schwerer Sandsturm, an Intensität zunehmend',
+               'leichtes oder mäßiges Schneefegen, unter Augenhöhe',
+               'starkes Schneefegen, unter Augenhöhe',
+               'leichtes oder mäßiges Schneetreiben, über Augenhöhe',
+               'starkes Schneetreiben, über Augenhöhe',
+               # 40 Nebel oder Eisnebel
+               'Nebel in einiger Entfernung',
+               'Nebel in Schwaden oder Bänken',
+               'Nebel, Himmel erkennbar, dünner werdend',
+               'Nebel, Himmel nicht erkennbar, dünner werdend',
+               'Nebel, Himmel erkennbar, unverändert',
+               'Nebel, Himmel nicht erkennbar, unverändert',
+               'Nebel, Himmel erkennbar, dichter werdend',
+               'Nebel, Himmel nicht erkennbar, dichter werdend',
+               'Nebel mit Reifansatz, Himmel erkennbar',
+               'Nebel mit Reifansatz, Himmel nicht erkennbar',
+               # 50 Sprühregen
+               'unterbrochener leichter Sprühregen',
+               'durchgehend leichter Sprühregen',
+               'unterbrochener mäßiger Sprühregen',
+               'durchgehend mäßiger Sprühregen',
+               'unterbrochener starker Sprühregen',
+               'durchgehend starker Sprühregen',
+               'leichter gefrierender Sprühregen',
+               'mäßiger oder starker gefrierender Sprühregen',
+               'leichter Sprühregen mit Regen',
+               'mäßiger oder starker Sprühregen mit Regen',
+               # 60 Regen
+               'unterbrochener leichter Regen oder einzelne Regentropfen',
+               'durchgehend leichter Regen',
+               'unterbrochener mäßiger Regen',
+               'durchgehend mäßiger Regen',
+               'unterbrochener starker Regen',
+               'durchgehend starker Regen',
+               'leichter gefrierender Regen',
+               'mäßiger oder starker gefrierender Regen',
+               'leichter Schneeregen',
+               'mäßiger oder starker Schneeregen',
+               # 70 Schnee
+               'unterbrochener leichter Schneefall oder einzelne Schneeflocken',
+               'durchgehend leichter Schneefall',
+               'unterbrochener mäßiger Schneefall',
+               'durchgehend mäßiger Schneefall',
+               'unterbrochener starker Schneefall',
+               'durchgehend starker Schneefall',
+               'Eisnadeln (Polarschnee)',
+               'Schneegriesel',
+               'Schneekristalle',
+               'Eiskörner (gefrorene Regentropfen)',
+               # 80 Schauer
+               'leichter Regenschauer',
+               'mäßiger oder starker Regenschauer',
+               'äußerst heftiger Regenschauer',
+               'leichter Schneeregenschauer',
+               'mäßiger oder starker Schneeregenschauer',
+               'leichter Schneeschauer',
+               'mäßiger oder starker Schneeschauer',
+               'leichter Graupelschauer',
+               'mäßiger oder starker Graupelschauer',
+               'leichter Hagelschauer',
+               'mäßiger oder starker Hagelschauer',
+               # 90 Gewitter
+               'Gewitter in der letzten Stunde, zurzeit leichter Regen',
+               'Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Regen',
+               'Gewitter in der letzten Stunde, zurzeit leichter Schneefall/Schneeregen/Graupel/Hagel',
+               'Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Schneefall/Schneeregen/Graupel/Hagel',
+               'leichtes oder mäßiges Gewitter mit Regen oder Schnee',
+               'leichtes oder mäßiges Gewitter mit Graupel oder Hagel',
+               'starkes Gewitter mit Regen oder Schnee',
+               'starkes Gewitter mit Sandsturm',
+               'starkes Gewitter mit Graupel oder Hagel');
 
-=head2 DWD_OpenData_Initialize($)
+my @alerts_data     = [ undef, undef ];
+my @alerts_received = [ undef, undef ];
+my @alerts_updating = [ undef, undef ];
 
-FHEM module I<Initialize> function
 
-=over
+=head1 FHEM CALLBACK FUNCTIONS
 
-=item * param hash: hash of DWD_OpenData device
+=head2 Define($$)
 
-=back
-
-=cut
-
-sub DWD_OpenData_Initialize($) {
-  my ($hash) = @_;
-  my $name = $hash->{NAME};
-
-  $hash->{DefFn}      = "DWD_OpenData_Define";
-  $hash->{UndefFn}    = "DWD_OpenData_Undef";
-  $hash->{ShutdownFn} = 'DWD_OpenData_Shutdown';
-  $hash->{AttrFn}     = "DWD_OpenData_Attr";
-  $hash->{GetFn}      = "DWD_OpenData_Get";
-
-  $hash->{AttrList} = "disable:0,1 "
-                      ."forecastStation forecastDays forecastResolution:3,6 forecastWW2Text:0,1 "
-                      ."forecastProperties:uzsuSelect,Tx,Tn,Tm,Tg,TT,Td,dd,ff,fx,RR6,RRp6,RR12,RRp12,RR24,RRp24,ev,ww,VV,Nf,NL,NM,NH,SS24,PPPP "
-                      ."alertArea alertLanguage:DE,EN "
-                      ."timezone "
-                      .$readingFnAttributes;
-
-  @dwd_dayProperties = ( 'Tx', 'Tn', 'Tg', 'Tm', 'ev', 'SS24' );
-
-  @dwd_hourProperties = ( 'TT', 'Td', 'RR6', 'RRp6', 'RR12', 'RRp12', 'RR24', 'RRp24',
-                          'ww', 'Nf', 'NL', 'NM', 'NH', 'dd', 'ff', 'fx', 'VV', 'PPPP' );
-
-  @dwd_wwdText = ( "Bewölkungsentwicklung nicht beobachtet",
-                   "Bewölkung abnehmend",
-                   "Bewölkung unverändert",
-                   "Bewölkung zunehmend",
-                   # 4 Dunst, Rauch, Staub oder Sand
-                   "Sicht durch Rauch oder Asche vermindert",
-                   "trockener Dunst (relative Feuchte < 80 %)",
-                   "verbreiteter Schwebstaub, nicht vom Wind herangeführt",
-                   "Staub oder Sand bzw. Gischt, vom Wind herangeführt",
-                   "gut entwickelte Staub- oder Sandwirbel",
-                   "Staub- oder Sandsturm im Gesichtskreis, aber nicht an der Station",
-                   # 10 Trockenereignisse
-                   "feuchter Dunst (relative Feuchte > 80 %)",
-                   "Schwaden von Bodennebel",
-                   "durchgehender Bodennebel",
-                   "Wetterleuchten sichtbar, kein Donner gehört",
-                   "Niederschlag im Gesichtskreis, nicht den Boden erreichend",
-                   "Niederschlag in der Ferne (> 5 km), aber nicht an der Station",
-                   "Niederschlag in der Nähe (< 5 km), aber nicht an der Station",
-                   "Gewitter (Donner hörbar), aber kein Niederschlag an der Station",
-                   "Markante Böen im Gesichtskreis, aber kein Niederschlag an der Station",
-                   "Tromben (trichterförmige Wolkenschläuche) im Gesichtskreis",
-                   # 20 Ereignisse der letzten Stunde, aber nicht zur Beobachtungszeit
-                   "nach Sprühregen oder Schneegriesel",
-                   "nach Regen",
-                   "nach Schneefall",
-                   "nach Schneeregen oder Eiskörnern",
-                   "nach gefrierendem Regen",
-                   "nach Regenschauer",
-                   "nach Schneeschauer",
-                   "nach Graupel- oder Hagelschauer",
-                   "nach Nebel",
-                   "nach Gewitter",
-                   # 30 Staubsturm, Sandsturm, Schneefegen oder -treiben
-                   "leichter oder mäßiger Sandsturm, an Intensität abnehmend",
-                   "leichter oder mäßiger Sandsturm, unveränderte Intensität",
-                   "leichter oder mäßiger Sandsturm, an Intensität zunehmend",
-                   "schwerer Sandsturm, an Intensität abnehmend",
-                   "schwerer Sandsturm, unveränderte Intensität",
-                   "schwerer Sandsturm, an Intensität zunehmend",
-                   "leichtes oder mäßiges Schneefegen, unter Augenhöhe",
-                   "starkes Schneefegen, unter Augenhöhe",
-                   "leichtes oder mäßiges Schneetreiben, über Augenhöhe",
-                   "starkes Schneetreiben, über Augenhöhe",
-                   # 40 Nebel oder Eisnebel
-                   "Nebel in einiger Entfernung",
-                   "Nebel in Schwaden oder Bänken",
-                   "Nebel, Himmel erkennbar, dünner werdend",
-                   "Nebel, Himmel nicht erkennbar, dünner werdend",
-                   "Nebel, Himmel erkennbar, unverändert",
-                   "Nebel, Himmel nicht erkennbar, unverändert",
-                   "Nebel, Himmel erkennbar, dichter werdend",
-                   "Nebel, Himmel nicht erkennbar, dichter werdend",
-                   "Nebel mit Reifansatz, Himmel erkennbar",
-                   "Nebel mit Reifansatz, Himmel nicht erkennbar",
-                   # 50 Sprühregen
-                   "unterbrochener leichter Sprühregen",
-                   "durchgehend leichter Sprühregen",
-                   "unterbrochener mäßiger Sprühregen",
-                   "durchgehend mäßiger Sprühregen",
-                   "unterbrochener starker Sprühregen",
-                   "durchgehend starker Sprühregen",
-                   "leichter gefrierender Sprühregen",
-                   "mäßiger oder starker gefrierender Sprühregen",
-                   "leichter Sprühregen mit Regen",
-                   "mäßiger oder starker Sprühregen mit Regen",
-                   # 60 Regen
-                   "unterbrochener leichter Regen oder einzelne Regentropfen",
-                   "durchgehend leichter Regen",
-                   "unterbrochener mäßiger Regen",
-                   "durchgehend mäßiger Regen",
-                   "unterbrochener starker Regen",
-                   "durchgehend starker Regen",
-                   "leichter gefrierender Regen",
-                   "mäßiger oder starker gefrierender Regen",
-                   "leichter Schneeregen",
-                   "mäßiger oder starker Schneeregen",
-                   # 70 Schnee
-                   "unterbrochener leichter Schneefall oder einzelne Schneeflocken",
-                   "durchgehend leichter Schneefall",
-                   "unterbrochener mäßiger Schneefall",
-                   "durchgehend mäßiger Schneefall",
-                   "unterbrochener starker Schneefall",
-                   "durchgehend starker Schneefall",
-                   "Eisnadeln (Polarschnee)",
-                   "Schneegriesel",
-                   "Schneekristalle",
-                   "Eiskörner (gefrorene Regentropfen)",
-                   # 80 Schauer
-                   "leichter Regenschauer",
-                   "mäßiger oder starker Regenschauer",
-                   "äußerst heftiger Regenschauer",
-                   "leichter Schneeregenschauer",
-                   "mäßiger oder starker Schneeregenschauer",
-                   "leichter Schneeschauer",
-                   "mäßiger oder starker Schneeschauer",
-                   "leichter Graupelschauer",
-                   "mäßiger oder starker Graupelschauer",
-                   "leichter Hagelschauer",
-                   "mäßiger oder starker Hagelschauer",
-                   # 90 Gewitter
-                   "Gewitter in der letzten Stunde, zurzeit leichter Regen",
-                   "Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Regen",
-                   "Gewitter in der letzten Stunde, zurzeit leichter Schneefall/Schneeregen/Graupel/Hagel",
-                   "Gewitter in der letzten Stunde, zurzeit mäßiger oder starker Schneefall/Schneeregen/Graupel/Hagel",
-                   "leichtes oder mäßiges Gewitter mit Regen oder Schnee",
-                   "leichtes oder mäßiges Gewitter mit Graupel oder Hagel",
-                   "starkes Gewitter mit Regen oder Schnee",
-                   "starkes Gewitter mit Sandsturm",
-                   "starkes Gewitter mit Graupel oder Hagel");
-}
-
-=head2 DWD_OpenData_Define($$)
-
-FHEM module I<DefFn>
+FHEM I<DefFn>
 
 =over
 
@@ -235,7 +206,7 @@ FHEM module I<DefFn>
 
 =cut
 
-sub DWD_OpenData_Define($$) {
+sub Define($$) {
   my ($hash, $def) = @_;
   my $name = $hash->{NAME};
 
@@ -247,17 +218,17 @@ sub DWD_OpenData_Define($$) {
   }
 
   # cache timezone attribute
-  $hash->{'.TZ'} = AttrVal($hash, 'timezone', $hash->{FHEM_TZ});
+  $hash->{'.TZ'} = ::AttrVal($hash, 'timezone', $hash->{FHEM_TZ});
 
-  readingsSingleUpdate($hash, 'state', IsDisabled($name)? 'disabled' : 'defined', 1);
-  InternalTimer(gettimeofday() + 3, 'DWD_OpenData_Timer', $hash, 0);
+  ::readingsSingleUpdate($hash, 'state', ::IsDisabled($name)? 'disabled' : 'defined', 1);
+  ::InternalTimer(gettimeofday() + 3, 'DWD_OpenData::Timer', $hash, 0);
 
   return undef;
 }
 
-=head2 DWD_OpenData_Undef($$)
+=head2 Undef($$)
 
-FHEM module I<UndefFn>
+FHEM I<UndefFn>
 
 =over
 
@@ -269,18 +240,18 @@ FHEM module I<UndefFn>
 
 =cut
 
-sub DWD_OpenData_Undef($$) {
+sub Undef($$) {
   my ($hash, $arg) = @_;
   my $name = $hash->{NAME};
 
-  RemoveInternalTimer($hash);
+  ::RemoveInternalTimer($hash);
 
   return undef;
 }
 
-=head2 DWD_OpenData_Undef($)
+=head2 Shutdown($)
 
-FHEM module I<ShutdownFn>
+FHEM I<ShutdownFn>
 
 =over
 
@@ -290,14 +261,14 @@ FHEM module I<ShutdownFn>
 
 =cut
 
-sub DWD_OpenData_Shutdown($) {
+sub Shutdown($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
 
-  RemoveInternalTimer($hash);
+  ::RemoveInternalTimer($hash);
 
   if (defined($hash->{".alertsBlockingCall"})) {
-    BlockingKill($hash->{".alertsBlockingCall"});
+    ::BlockingKill($hash->{".alertsBlockingCall"});
   }
 
   if (defined($hash->{".alertsFile"})) {
@@ -309,9 +280,9 @@ sub DWD_OpenData_Shutdown($) {
   return undef;
 }
 
-=head2 DWD_OpenData_Attr(@)
+=head2 Attr(@)
 
-FHEM module I<AttrFn>
+FHEM I<AttrFn>
 
 =over
 
@@ -329,9 +300,9 @@ FHEM module I<AttrFn>
 
 =cut
 
-sub DWD_OpenData_Attr(@) {
+sub Attr(@) {
   my ($command, $name, $attribute, $value) = @_;
-  my $hash = $defs{$name};
+  my $hash = $::defs{$name};
 
   given($command) {
     when("set") {
@@ -340,17 +311,17 @@ sub DWD_OpenData_Attr(@) {
           # enable/disable polling
           if ($main::init_done) {
             if ($value) {
-              RemoveInternalTimer($hash);
-              readingsSingleUpdate($hash, 'state', 'disabled', 1);
+              ::RemoveInternalTimer($hash);
+              ::readingsSingleUpdate($hash, 'state', 'disabled', 1);
             } else {
-              readingsSingleUpdate($hash, 'state', 'defined', 1);
-              InternalTimer(gettimeofday() + 3, 'DWD_OpenData_Timer', $hash, 0);
+              ::readingsSingleUpdate($hash, 'state', 'defined', 1);
+              ::InternalTimer(gettimeofday() + 3, 'DWD_OpenData::Timer', $hash, 0);
             }
           }
         }
         when("forecastWW2Text") {
           if (!$value) {
-            CommandDeleteReading(undef, "$name fc.*wwd");
+            ::CommandDeleteReading(undef, "$name fc.*wwd");
           }
         }
         when("timezone") {
@@ -366,11 +337,11 @@ sub DWD_OpenData_Attr(@) {
     when("del") {
       given($attribute) {
         when("disable") {
-          readingsSingleUpdate($hash, 'state', 'defined', 1);
-          InternalTimer(gettimeofday() + 3, 'DWD_OpenData_Timer', $hash, 0);
+          ::readingsSingleUpdate($hash, 'state', 'defined', 1);
+          ::InternalTimer(gettimeofday() + 3, 'DWD_OpenData::Timer', $hash, 0);
         }
         when("forecastWW2Text") {
-          CommandDeleteReading(undef, "$name fc.*wwd");
+          ::CommandDeleteReading(undef, "$name fc.*wwd");
         }
         when("timezone") {
           $hash->{'.TZ'} = $hash->{FHEM_TZ};
@@ -382,14 +353,9 @@ sub DWD_OpenData_Attr(@) {
   return undef;
 }
 
-sub DWD_OpenData_GetForecast($$);
-sub DWD_OpenData_GetAlerts($$);
-sub DWD_OpenData_UpdateAlerts($$);
-sub DWD_OpenData_IsCommuneUnionWarncellId($);
+=head2 Get($@)
 
-=head2 DWD_OpenData_Get($@)
-
-FHEM module I<GetFn>
+FHEM I<GetFn>
 
 =over
 
@@ -403,7 +369,7 @@ FHEM module I<GetFn>
 
 =cut
 
-sub DWD_OpenData_Get($@)
+sub Get($@)
 {
   my ($hash, @a) = @_;
   my $name = $hash->{NAME};
@@ -413,18 +379,18 @@ sub DWD_OpenData_Get($@)
   given($command) {
     when("alerts") {
       my $warncellId = $a[2];
-      $warncellId = AttrVal($name, 'alertArea', undef) if (!defined($warncellId));
+      $warncellId = ::AttrVal($name, 'alertArea', undef) if (!defined($warncellId));
       if (defined($warncellId)) {
-        my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
-        if (defined($dwd_alerts_updating[$communeUnion]) && (time() - $dwd_alerts_updating[$communeUnion] < 60)) {
+        my $communeUnion = IsCommuneUnionWarncellId($warncellId);
+        if (defined($alerts_updating[$communeUnion]) && (time() - $alerts_updating[$communeUnion] < 60)) {
           # abort if update is in progress
           $result = "alerts cache update in progress, please wait and try again";
-        } elsif (defined($dwd_alerts_received[$communeUnion]) && (time() - $dwd_alerts_received[$communeUnion] < 900)) {
+        } elsif (defined($alerts_received[$communeUnion]) && (time() - $alerts_received[$communeUnion] < 900)) {
           # use cache if not older than 15 minutes
-          $result = DWD_OpenData_UpdateAlerts($hash, $warncellId);
+          $result = UpdateAlerts($hash, $warncellId);
         } else {
           # update cache if older than 15 minutes
-          $result = DWD_OpenData_GetAlerts($hash, $warncellId);
+          $result = GetAlerts($hash, $warncellId);
         }
       } else {
         $result = "warncell id required for $name get $command";
@@ -433,9 +399,9 @@ sub DWD_OpenData_Get($@)
 
     when("forecast") {
       my $station = $a[2];
-      $station = AttrVal($name, 'forecastStation', undef) if (!defined($station));
+      $station = ::AttrVal($name, 'forecastStation', undef) if (!defined($station));
       if (defined($station)) {
-        $result = DWD_OpenData_GetForecast($hash, $station);
+        $result = GetForecast($hash, $station);
       } else {
         $result = "station code required for $name get $command";
       }
@@ -446,25 +412,25 @@ sub DWD_OpenData_Get($@)
       my $option = lc($a[2]);
       given($option) {
         when("communeunions") {
-          $updateMode = DWD_OD_UPDATE_COMMUNEUNIONS;
+          $updateMode = UPDATE_COMMUNEUNIONS;
         }
         when("districts") {
-          $updateMode = DWD_OD_UPDATE_DISTRICTS;
+          $updateMode = UPDATE_DISTRICTS;
         }
         when("all") {
-          $updateMode = DWD_OD_UPDATE_ALL;
+          $updateMode = UPDATE_ALL;
         }
         default {
           return "update mode 'communeUnions', 'districts' or 'all' required for $name get $command";
         }
       }
-      my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($updateMode);
-      if (defined($dwd_alerts_updating[$communeUnion]) && (time() - $dwd_alerts_updating[$communeUnion] < 60)) {
+      my $communeUnion = IsCommuneUnionWarncellId($updateMode);
+      if (defined($alerts_updating[$communeUnion]) && (time() - $alerts_updating[$communeUnion] < 60)) {
         # abort if update is in progress
         $result = "alerts cache update in progress, please wait and try again";
       } else {
         # update cache if older than 15 minutes
-        $result = DWD_OpenData_GetAlerts($hash, $updateMode);
+        $result = GetAlerts($hash, $updateMode);
       }
     }
 
@@ -476,7 +442,61 @@ sub DWD_OpenData_Get($@)
   return $result;
 }
 
-=head2 DWD_OpenData_Timelocal($$)
+=head2 Timer($)
+
+FHEM I<InternalTimer> function
+
+=over
+
+=item * param hash: hash of DWD_OpenData device
+
+=back
+
+=cut
+
+sub Timer($)
+{
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+
+  ::Log3 $name, 5, "$name: Timer START";
+
+  my $time = time();
+  my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = Localtime($hash, $time);
+  my $actQuarter = int($tMin/15);
+
+  if ($actQuarter == 0) {
+    my $forecastStation = ::AttrVal($name, 'forecastStation', undef);
+    if (defined($forecastStation)) {
+      my $result = GetForecast($hash, $forecastStation);
+      if (defined($result)) {
+        ::Log3 $name, 4, "$name: error retrieving forecast: $result";
+      }
+    }
+  }
+
+  my $warncellId = ::AttrVal($name, 'alertArea', undef);
+  if (defined($warncellId)) {
+    # skip update if already in progress
+    my $communeUnion = IsCommuneUnionWarncellId($warncellId);
+    if (!defined($alerts_updating[$communeUnion]) || (time() - $alerts_updating[$communeUnion] >= 60)) {
+      my $result = GetAlerts($hash, $warncellId);
+      if (defined($result)) {
+        ::Log3 $name, 4, "$name: error retrieving alerts: $result";
+      }
+    }
+  }
+
+  # schedule next for 5 seconds past next quarter
+  my $nextQuarterSeconds = Timelocal($hash, 0, $actQuarter*15, $tHour, $tMday, $tMon, $tYear) + 905;
+  ::InternalTimer($nextQuarterSeconds, 'DWD_OpenData::Timer', $hash, 0);
+
+  ::Log3 $name, 5, "$name: Timer END";
+}
+
+=head1 MODULE FUNCTIONS
+
+=head2 Timelocal($$)
 
 =over
 
@@ -490,7 +510,7 @@ sub DWD_OpenData_Get($@)
 
 =cut
 
-sub DWD_OpenData_Timelocal($@) {
+sub Timelocal($@) {
   my ($hash, @ta) = @_;
   if (defined($hash->{'.TZ'})) {
     $ENV{"TZ"} = $hash->{'.TZ'};
@@ -504,7 +524,7 @@ sub DWD_OpenData_Timelocal($@) {
   return $t;
 }
 
-=head2 DWD_OpenData_Localtime(@)
+=head2 Localtime(@)
 
 =over
 
@@ -518,7 +538,7 @@ sub DWD_OpenData_Timelocal($@) {
 
 =cut
 
-sub DWD_OpenData_Localtime(@) {
+sub Localtime(@) {
   my ($hash, $t) = @_;
   if (defined($hash->{'.TZ'})) {
     $ENV{"TZ"} = $hash->{'.TZ'};
@@ -532,7 +552,7 @@ sub DWD_OpenData_Localtime(@) {
   return @ta;
 }
 
-=head2 DWD_OpenData_FormatDateTimeLocal($$)
+=head2 FormatDateTimeLocal($$)
 
 =over
 
@@ -546,11 +566,11 @@ sub DWD_OpenData_Localtime(@) {
 
 =cut
 
-sub DWD_OpenData_FormatDateTimeLocal($$) {
-  return strftime('%Y-%m-%d %H:%M:%S', DWD_OpenData_Localtime(@_));
+sub FormatDateTimeLocal($$) {
+  return strftime('%Y-%m-%d %H:%M:%S', Localtime(@_));
 }
 
-=head2 DWD_OpenData_FormatDateLocal($$)
+=head2 FormatDateLocal($$)
 
 =over
 
@@ -564,11 +584,11 @@ sub DWD_OpenData_FormatDateTimeLocal($$) {
 
 =cut
 
-sub DWD_OpenData_FormatDateLocal($$) {
-  return strftime('%Y-%m-%d', DWD_OpenData_Localtime(@_));
+sub FormatDateLocal($$) {
+  return strftime('%Y-%m-%d', Localtime(@_));
 }
 
-=head2 DWD_OpenData_FormatTimeLocal($$)
+=head2 FormatTimeLocal($$)
 
 =over
 
@@ -582,11 +602,11 @@ sub DWD_OpenData_FormatDateLocal($$) {
 
 =cut
 
-sub DWD_OpenData_FormatTimeLocal($$) {
-  return strftime('%H:%M', DWD_OpenData_Localtime(@_));
+sub FormatTimeLocal($$) {
+  return strftime('%H:%M', Localtime(@_));
 }
 
-=head2 DWD_OpenData_FormatWeekdayLocal($$)
+=head2 FormatWeekdayLocal($$)
 
 =over
 
@@ -600,11 +620,11 @@ sub DWD_OpenData_FormatTimeLocal($$) {
 
 =cut
 
-sub DWD_OpenData_FormatWeekdayLocal($$) {
-  return strftime('%a', DWD_OpenData_Localtime(@_));
+sub FormatWeekdayLocal($$) {
+  return strftime('%a', Localtime(@_));
 }
 
-=head2 DWD_OpenData_ParseDateTimeLocal($$)
+=head2 ParseDateTimeLocal($$)
 
 =over
 
@@ -618,14 +638,14 @@ sub DWD_OpenData_FormatWeekdayLocal($$) {
 
 =cut
 
-sub DWD_OpenData_ParseDateTimeLocal($$) {
+sub ParseDateTimeLocal($$) {
   my ($hash, $s) = @_;
   my $t;
-  eval { $t = DWD_OpenData_Timelocal($hash, strptime($s, '%Y-%m-%d %H:%M:%S')) };
+  eval { $t = Timelocal($hash, strptime($s, '%Y-%m-%d %H:%M:%S')) };
   return $t;
 }
 
-=head2 DWD_OpenData_ParseDateLocal($$)
+=head2 ParseDateLocal($$)
 
 =over
 
@@ -639,14 +659,14 @@ sub DWD_OpenData_ParseDateTimeLocal($$) {
 
 =cut
 
-sub DWD_OpenData_ParseDateLocal($$) {
+sub ParseDateLocal($$) {
   my ($hash, $s) = @_;
   my $t;
-  eval { $t = DWD_OpenData_Timelocal($hash, strptime($s, '%Y-%m-%d')) };
+  eval { $t = Timelocal($hash, strptime($s, '%Y-%m-%d')) };
   return $t;
 }
 
-=head2 DWD_OpenData_ParseCAPTime($)
+=head2 ParseCAPTime($)
 
 =over
 
@@ -658,15 +678,15 @@ sub DWD_OpenData_ParseDateLocal($$) {
 
 =cut
 
-sub DWD_OpenData_ParseCAPTime($) {
+sub ParseCAPTime($) {
   my ($s) = @_;
 
   $s =~ s|(.+):|$1|; # remove colon from time zone offset
-  #Log 1, "DWD_OpenData_ParseCAPTime: " . $s;
+  #Log 1, "ParseCAPTime: " . $s;
   return Time::Piece->strptime($s, '%Y-%m-%dT%H:%M:%S%z')->epoch;
 }
 
-=head2 DWD_OpenData_IsCommuneUnionWarncellId($)
+=head2 IsCommuneUnionWarncellId($)
 
 =over
 
@@ -678,13 +698,13 @@ sub DWD_OpenData_ParseCAPTime($) {
 
 =cut
 
-sub DWD_OpenData_IsCommuneUnionWarncellId($) {
+sub IsCommuneUnionWarncellId($) {
   my ($warncellId) = @_;
   return int($warncellId/100000000) == 5 || int($warncellId/100000000) == 8
-         || $warncellId == DWD_OD_UPDATE_COMMUNEUNIONS || $warncellId == DWD_OD_UPDATE_ALL? 1 : 0;
+         || $warncellId == UPDATE_COMMUNEUNIONS || $warncellId == UPDATE_ALL? 1 : 0;
 }
 
-=head2 DWD_OpenData_RotateForecast($$;$)
+=head2 RotateForecast($$;$)
 
 =over
 
@@ -700,31 +720,31 @@ sub DWD_OpenData_IsCommuneUnionWarncellId($) {
 
 =cut
 
-sub DWD_OpenData_RotateForecast($$;$)
+sub RotateForecast($$;$)
 {
   my ($hash, $station, $today) = @_;
   my $name = $hash->{NAME};
 
   my $daysAvailable = 0;
-  while (defined(ReadingsVal($name, 'fc'.$daysAvailable.'_date', undef))) {
+  while (defined(::ReadingsVal($name, 'fc'.$daysAvailable.'_date', undef))) {
     $daysAvailable++;
   }
-  #Log3 $name, 5, "$name: A $daysAvailable";
+  #::Log3 $name, 5, "$name: A $daysAvailable";
 
-  my $oT = ReadingsVal($name, 'fc0_date', undef);
-  my $oldToday = defined($oT)? DWD_OpenData_ParseDateLocal($hash, $oT) : undef;
+  my $oT = ::ReadingsVal($name, 'fc0_date', undef);
+  my $oldToday = defined($oT)? ParseDateLocal($hash, $oT) : undef;
 
-  my $stationChanged = ReadingsVal($name, 'fc_station', '') ne $station;
+  my $stationChanged = ::ReadingsVal($name, 'fc_station', '') ne $station;
   if ($stationChanged) {
     # different station, delete existing readings
-    CommandDeleteReading(undef, "$name fc.*");
+    ::CommandDeleteReading(undef, "$name fc.*");
     $daysAvailable = 0;
   } elsif (defined($oldToday)) {
     # same station, shift existing readings
     if (!defined($today)) {
       my $time = time();
-      my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = DWD_OpenData_Localtime($hash, $time);
-      $today = DWD_OpenData_Timelocal($hash, 0, 0, 0, $tMday, $tMon, $tYear);
+      my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = Localtime($hash, $time);
+      $today = Timelocal($hash, 0, 0, 0, $tMday, $tMon, $tYear);
     }
 
     my $daysForward = sprintf("%.0f", $today - $oldToday);  # Perl equivalent for round()
@@ -733,14 +753,14 @@ sub DWD_OpenData_RotateForecast($$;$)
       if ($daysForward < $daysAvailable) {
         # shift readings forward by days
         my @shiftProperties = ( 'date' );
-        foreach my $property (@dwd_dayProperties) {
+        foreach my $property (@dayProperties) {
           push(@shiftProperties, $property);
         }
         for (my $s=0; $s<7; $s++) {
           push(@shiftProperties, $s.'_time');
           push(@shiftProperties, $s.'_wwd');
         }
-        foreach my $property (@dwd_hourProperties) {
+        foreach my $property (@hourProperties) {
           for (my $s=0; $s<7; $s++) {
             push(@shiftProperties, $s.'_'.$property);
           }
@@ -749,22 +769,22 @@ sub DWD_OpenData_RotateForecast($$;$)
           my $sourcePrefix = 'fc'.($daysForward + $d).'_';
           my $destinationPrefix = 'fc'.$d.'_';
           foreach my $property (@shiftProperties) {
-            my $value = ReadingsVal($name, $sourcePrefix.$property, undef);
+            my $value = ::ReadingsVal($name, $sourcePrefix.$property, undef);
             if (defined($value)) {
-              readingsBulkUpdate($hash, $destinationPrefix.$property, $value);
+              ::readingsBulkUpdate($hash, $destinationPrefix.$property, $value);
             } else {
-              CommandDeleteReading(undef, $destinationPrefix.$property);
+              ::CommandDeleteReading(undef, $destinationPrefix.$property);
             }
           }
         }
         # delete existing readings of all days that have not been written
         for (my $d=($daysAvailable - $daysForward); $d<$daysAvailable; $d++) {
-          CommandDeleteReading(undef, "$name fc".$d."_.*");
+          ::CommandDeleteReading(undef, "$name fc".$d."_.*");
         }
         $daysAvailable -= $daysForward;
       } else {
         # nothing to shift, delete existing readings
-        CommandDeleteReading(undef, "$name fc.*");
+        ::CommandDeleteReading(undef, "$name fc.*");
         $daysAvailable = 0;
       }
     }
@@ -773,9 +793,9 @@ sub DWD_OpenData_RotateForecast($$;$)
   return $daysAvailable;
 }
 
-sub DWD_OpenData_ProcessForecast($$$);
+sub ProcessForecast($$$);
 
-=head2 DWD_OpenData_GetForecast($$)
+=head2 GetForecast($$)
 
 =over
 
@@ -787,12 +807,12 @@ sub DWD_OpenData_ProcessForecast($$$);
 
 =cut
 
-sub DWD_OpenData_GetForecast($$)
+sub GetForecast($$)
 {
   my ($hash, $station) = @_;
   my $name = $hash->{NAME};
 
-  if (!IsDisabled($name)) {
+  if (!::IsDisabled($name)) {
     # test perl module Text::CSV_XS
     eval {
       require Text::CSV_XS; # 0.40 or higher required
@@ -815,29 +835,29 @@ sub DWD_OpenData_GetForecast($$)
     }
     $fileName .= '-MOSMIX.csv';
 
-    # @TODO move DWD_OpenData_RotateForecast
+    # @TODO move RotateForecast
 
     # get forecast for station from DWD server
-    readingsSingleUpdate($hash, 'state', 'fetching', 0);
+    ::readingsSingleUpdate($hash, 'state', 'fetching', 0);
     my $url = 'https://opendata.dwd.de/weather/local_forecasts/poi/' . $fileName;
     my $param = {
                   url        => $url,
                   method     => "GET",
                   timeout    => 10,
-                  callback   => \&DWD_OpenData_ProcessForecast,
+                  callback   => \&ProcessForecast,
                   hash       => $hash,
                   station    => $station
                 };
-    Log3 $name, 5, "$name: DWD_OpenData_GetForecast START (PID $$): $url";
-    HttpUtils_NonblockingGet($param);
+    ::Log3 $name, 5, "$name: GetForecast START (PID $$): $url";
+    ::HttpUtils_NonblockingGet($param);
 
-    Log3 $name, 5, "$name: DWD_OpenData_GetForecast END";
+    ::Log3 $name, 5, "$name: GetForecast END";
   } else {
     return "disabled";
   }
 }
 
-=head2 DWD_OpenData_ProcessForecast($$$)
+=head2 ProcessForecast($$$)
 
 =over
 
@@ -853,7 +873,7 @@ sub DWD_OpenData_GetForecast($$)
 
 =cut
 
-sub DWD_OpenData_ProcessForecast($$$)
+sub ProcessForecast($$$)
 {
   my ($param, $httpError, $fileContent) = @_;
   my $hash    = $param->{hash};
@@ -862,14 +882,14 @@ sub DWD_OpenData_ProcessForecast($$$)
   my $code    = $param->{code};
   my $station = $param->{station};
 
-  Log3 $name, 5, "$name: DWD_OpenData_ProcessForecast START";
+  ::Log3 $name, 5, "$name: ProcessForecast START";
 
   # preprocess existing readings
-  readingsBeginUpdate($hash);
+  ::readingsBeginUpdate($hash);
   my $time = time();
-  my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = DWD_OpenData_Localtime($hash, $time);
-  my $today = DWD_OpenData_Timelocal($hash, 0, 0, 0, $tMday, $tMon, $tYear);
-  my $daysAvailable = DWD_OpenData_RotateForecast($hash, $station, $today);
+  my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = Localtime($hash, $time);
+  my $today = Timelocal($hash, 0, 0, 0, $tMday, $tMon, $tYear);
+  my $daysAvailable = RotateForecast($hash, $station, $today);
 
   my $relativeDay = 0;
   eval {
@@ -883,10 +903,10 @@ sub DWD_OpenData_ProcessForecast($$$)
       die "no data retrieved from URL '$url'";
     }
 
-    #Log3 $name, 5, "$name: DWD_OpenData_ProcessForecast: $code >$fileContent<";
+    #::Log3 $name, 5, "$name: ProcessForecast: $code >$fileContent<";
 
     # create memory mapped file form received data and parse as CSV
-    readingsBulkUpdate($hash, 'state', 'parsing', 0);
+    ::readingsBulkUpdate($hash, 'state', 'parsing', 0);
     my $csv = Text::CSV_XS->new({ sep_char => ';' });
     if (!defined($csv)) {
       die "error creating CSV parser: ".Text::CSV_XS->error_diag();
@@ -900,13 +920,13 @@ sub DWD_OpenData_ProcessForecast($$$)
     }
 
     #foreach my $columnName (@columnNames) {
-    #  Log3 $name, 5, "$name: DWD_OpenData_ProcessForecast cn: $columnName";
+    #  ::Log3 $name, 5, "$name: ProcessForecast cn: $columnName";
     #}
 
     $csv->column_names(@columnNames);
     my @aoh;
     while (my $row = $csv->getline_hr($fileHandle)) {
-      #Log3 $name, 5, "$name: DWD_OpenData_ProcessForecast r: $row";
+      #::Log3 $name, 5, "$name: ProcessForecast r: $row";
       push(@aoh, $row);
     }
 
@@ -916,22 +936,22 @@ sub DWD_OpenData_ProcessForecast($$$)
     }
 
     # prepare processing
-    readingsBulkUpdate($hash, 'state', 'processing');
-    my $forecastWW2Text = AttrVal($name, 'forecastWW2Text', 0);
-    my $forecastDays = AttrVal($name, 'forecastDays', 14);
-    my $forecastResolution = AttrVal($name, 'forecastResolution', 6);
-    my $forecastProperties = AttrVal($name, 'forecastProperties', undef);
+    ::readingsBulkUpdate($hash, 'state', 'processing');
+    my $forecastWW2Text = ::AttrVal($name, 'forecastWW2Text', 0);
+    my $forecastDays = ::AttrVal($name, 'forecastDays', 14);
+    my $forecastResolution = ::AttrVal($name, 'forecastResolution', 6);
+    my $forecastProperties = ::AttrVal($name, 'forecastProperties', undef);
     my @properties = split(',', $forecastProperties) if (defined($forecastProperties));
     my @selectedDayProperties;
     my @selectedHourProperties;
     if (!@properties) {
       # no selection: default to all properties
-      @selectedDayProperties = @dwd_dayProperties;
-      @selectedHourProperties = @dwd_hourProperties;
+      @selectedDayProperties = @dayProperties;
+      @selectedHourProperties = @hourProperties;
     } else {
       # split selected properties in day and hour properties
       foreach my $property (@properties) {
-        if (grep(/^$property$/, @dwd_dayProperties)) {
+        if (grep(/^$property$/, @dayProperties)) {
           push(@selectedDayProperties, $property);
         } else {
           push(@selectedHourProperties, $property);
@@ -939,8 +959,8 @@ sub DWD_OpenData_ProcessForecast($$$)
       }
     }
 
-    readingsBulkUpdate($hash, "fc_station", $station);
-    readingsBulkUpdate($hash, "fc_copyright", "Datenbasis: Deutscher Wetterdienst");
+    ::readingsBulkUpdate($hash, "fc_station", $station);
+    ::readingsBulkUpdate($hash, "fc_copyright", "Datenbasis: Deutscher Wetterdienst");
 
     # process received data: row 0 holds physical units, row 1 holds comment, row 2 hold first data
     my $rowIndex = 0;
@@ -955,13 +975,13 @@ sub DWD_OpenData_ProcessForecast($$$)
       elsif ($rowIndex >= 2) {
         if ($rowIndex == 2) {
           #my $reportTime = Time::Piece->strptime($row->{forecast}.' '.$reportHour, '%d.%m.%y %H %Z');
-          #readingsBulkUpdate($hash, "fc_time", DWD_OpenData_FormatDateTimeLocal($hash, $reportTime->epoch));
-          readingsBulkUpdate($hash, "fc_time", DWD_OpenData_FormatDateTimeLocal($hash, $time));
+          #::readingsBulkUpdate($hash, "fc_time", FormatDateTimeLocal($hash, $reportTime->epoch));
+          ::readingsBulkUpdate($hash, "fc_time", FormatDateTimeLocal($hash, $time));
         }
         # analyse date relation between forecast and today
         my $forecastTime = Time::Piece->strptime($row->{forecast}.' '.$row->{parameter}.' GMT', '%d.%m.%y %H:%M %Z');
-        my ($fcSec, $fcMin, $fcHour, $fcMday, $fcMon, $fcYear, $fcWday, $fcYday, $fcIsdst) = DWD_OpenData_Localtime($hash, $forecastTime->epoch);
-        my $forecastDate = DWD_OpenData_Timelocal($hash, 0, 0, 0, $fcMday, $fcMon, $fcYear);
+        my ($fcSec, $fcMin, $fcHour, $fcMday, $fcMon, $fcYear, $fcWday, $fcYday, $fcIsdst) = Localtime($hash, $forecastTime->epoch);
+        my $forecastDate = Timelocal($hash, 0, 0, 0, $fcMday, $fcMon, $fcYear);
         my $nextRelativeDay = sprintf("%.0f", ($forecastDate - $today)/(24*60*60)); # Perl equivalent for round()
         if ($nextRelativeDay > $forecastDays) {
           # max. number of days processed, done
@@ -974,34 +994,36 @@ sub DWD_OpenData_ProcessForecast($$$)
         $relativeDay = $nextRelativeDay;
         # write data
         my $destinationPrefix = 'fc'.$relativeDay.'_';
-        #Log3 $name, 5, "$name: $row->{forecast} $row->{parameter} -> $forecastTime -> $fcMday.$fcMon.$fcYear $fcHour:$fcMin -> $forecastDate -> $destinationPrefix";
-        readingsBulkUpdate($hash, $destinationPrefix.'date', DWD_OpenData_FormatDateLocal($hash, $forecastTime->epoch));
-        readingsBulkUpdate($hash, $destinationPrefix.'weekday', DWD_OpenData_FormatWeekdayLocal($hash, $forecastTime->epoch));
+        #::Log3 $name, 5, "$name: $row->{forecast} $row->{parameter} -> $forecastTime -> $fcMday.$fcMon.$fcYear $fcHour:$fcMin -> $forecastDate -> $destinationPrefix";
+        ::readingsBulkUpdate($hash, $destinationPrefix.'date', FormatDateLocal($hash, $forecastTime->epoch));
+        ::readingsBulkUpdate($hash, $destinationPrefix.'weekday', FormatWeekdayLocal($hash, $forecastTime->epoch));
         foreach my $property (@selectedDayProperties) {
           my $value = $row->{$property};
+          $value =~ s/^\s+|\s+$//g; # trim
           $value = undef if ($value eq "---");
           if (defined($value)) {
-            $value =~ s/,/./g;
-            #Log3 $name, 5, "$name: $property = $value";
-            readingsBulkUpdate($hash, $destinationPrefix.$property, $value) if (defined($value));
+            $value =~ s/,/./g; # decimal point
+            #::Log3 $name, 5, "$name: $property = $value";
+            ::readingsBulkUpdate($hash, $destinationPrefix.$property, $value) if (defined($value));
           }
         }
-        #Log3 $name, 5, "$name: $rowIndex/$today/$row->{forecast}/$relativeDay/$row->{parameter}";
+        #::Log3 $name, 5, "$name: $rowIndex/$today/$row->{forecast}/$relativeDay/$row->{parameter}";
         my $hourUTC = (split(':', $row->{parameter}))[0];
         if ($forecastResolution == 3 || ($hourUTC eq "00" || $hourUTC eq "06" || $hourUTC eq "12" || $hourUTC eq "18")) {
-          #Log3 $name, 5, "$name: $rowIndex/$today/$row->{forecast}/$relativeDay/$row->{parameter}/$fcHour";
+          #::Log3 $name, 5, "$name: $rowIndex/$today/$row->{forecast}/$relativeDay/$row->{parameter}/$fcHour";
           $destinationPrefix .= int($fcHour/$forecastResolution).'_';
-          readingsBulkUpdate($hash, $destinationPrefix.'time', DWD_OpenData_FormatTimeLocal($hash, $forecastTime->epoch));
+          ::readingsBulkUpdate($hash, $destinationPrefix.'time', FormatTimeLocal($hash, $forecastTime->epoch));
           foreach my $property (@selectedHourProperties) {
             my $label = $property;
             $label =~ s/^RRp/RR%/g;
             my $value = $row->{$label};
+            $value =~ s/^\s+|\s+$//g; # trim
             $value = undef if (defined($value) && ($value eq "---"));
             if (defined($value)) {
-              $value =~ s/,/./g;
-              readingsBulkUpdate($hash, $destinationPrefix.$property, $value);
+              $value =~ s/,/./g; # decimal point
+              ::readingsBulkUpdate($hash, $destinationPrefix.$property, $value);
               if ($forecastWW2Text && ($property eq 'ww') && length($value) > 0) {
-                readingsBulkUpdate($hash, $destinationPrefix.'wwd', $dwd_wwdText[$value]);
+                ::readingsBulkUpdate($hash, $destinationPrefix.'wwd', $wwdText[$value]);
               }
             }
           }
@@ -1015,53 +1037,49 @@ sub DWD_OpenData_ProcessForecast($$$)
   if ($@) {
     my @parts = split(' at ', $@);
     if (@parts) {
-      readingsBulkUpdate($hash, 'state', "forecast error: $parts[0]");
-      Log3 $name, 4, "$name: DWD_OpenData_ProcessForecast error: $parts[0]";
+      ::readingsBulkUpdate($hash, 'state', "forecast error: $parts[0]");
+      ::Log3 $name, 4, "$name: ProcessForecast error: $parts[0]";
     } else {
-      readingsBulkUpdate($hash, 'state', "forecast error: $@");
-      Log3 $name, 4, "$name: DWD_OpenData_ProcessForecast error: $@";
+      ::readingsBulkUpdate($hash, 'state', "forecast error: $@");
+      ::Log3 $name, 4, "$name: ProcessForecast error: $@";
     }
-    readingsEndUpdate($hash, 1);
+    ::readingsEndUpdate($hash, 1);
     return @parts? $parts[0] : $@;
   }
 
   # delete existing readings of all days that have not been written
-  #Log3 $name, 5, "$name: B $relativeDay $daysAvailable";
+  #::Log3 $name, 5, "$name: B $relativeDay $daysAvailable";
   for (my $d=($relativeDay + 1); $d<$daysAvailable; $d++) {
-    CommandDeleteReading(undef, "$name fc".$d."_.*");
+    ::CommandDeleteReading(undef, "$name fc".$d."_.*");
   }
 
-  readingsBulkUpdate($hash, 'state', 'forecast updated');
-  readingsEndUpdate($hash, 1);
+  ::readingsBulkUpdate($hash, 'state', 'forecast updated');
+  ::readingsEndUpdate($hash, 1);
 
-  Log3 $name, 5, "$name: DWD_OpenData_ProcessForecast END";
+  ::Log3 $name, 5, "$name: ProcessForecast END";
 
   return undef;
 }
 
-sub DWD_OpenData_GetAlertsBlockingFn($);
-sub DWD_OpenData_GetAlertsFinishFn(@);
-sub DWD_OpenData_GetAlertsAbortFn($);
-
-=head2 DWD_OpenData_GetAlerts($$)
+=head2 GetAlerts($$)
 
 =over
 
 =item * param hash: hash of DWD_OpenData device
 
-=item * param warncellId: numeric id of warncell, may also be C<DWD_OD_UPDATE_DISTRICTS>, C<DWD_OD_UPDATE_COMMUNEUNIONS> or C<DWD_OD_UPDATE_ALL>
+=item * param warncellId: numeric id of warncell, may also be C<UPDATE_DISTRICTS>, C<UPDATE_COMMUNEUNIONS> or C<UPDATE_ALL>
 
 =back
 
 =cut
 
-sub DWD_OpenData_GetAlerts($$)
+sub GetAlerts($$)
 {
   my ($hash, $warncellId) = @_;
   my $name = $hash->{NAME};
 
-  if (!IsDisabled($name)) {
-    Log3 $name, 5, "$name: DWD_OpenData_GetAlerts START (PID $$)";
+  if (!::IsDisabled($name)) {
+    ::Log3 $name, 5, "$name: GetAlerts START (PID $$)";
 
     # test if XML module is available
     eval {
@@ -1074,7 +1092,7 @@ sub DWD_OpenData_GetAlerts($$)
     # @TODO delete expired alerts?
 
     # download, unzip and parse using BlockingCall
-    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+    my $communeUnion = IsCommuneUnionWarncellId($warncellId);
     if (defined($hash->{".alertsFile".$communeUnion})) {
       # delete old temp file
       close($hash->{".alertsFileHandle".$communeUnion});
@@ -1084,24 +1102,24 @@ sub DWD_OpenData_GetAlerts($$)
     $hash->{".warncellId"} = $warncellId;
     if (defined($hash->{".alertsBlockingCall".$communeUnion})) {
       # kill old blocking call
-      BlockingKill($hash->{".alertsBlockingCall".$communeUnion});
+      ::BlockingKill($hash->{".alertsBlockingCall".$communeUnion});
     }
-    $hash->{".alertsBlockingCall".$communeUnion} = BlockingCall("DWD_OpenData_GetAlertsBlockingFn", $hash, "DWD_OpenData_GetAlertsFinishFn", 60, "DWD_OpenData_GetAlertsAbortFn", $hash);
+    $hash->{".alertsBlockingCall".$communeUnion} = ::BlockingCall("DWD_OpenData::GetAlertsStart", $hash, "DWD_OpenData::GetAlertsFinish", 60, "DWD_OpenData::GetAlertsAbort", $hash);
 
-    $dwd_alerts_updating[$communeUnion] = time();
+    $alerts_updating[$communeUnion] = time();
 
-    readingsSingleUpdate($hash, 'state', 'updating alerts cache', 1);
+    ::readingsSingleUpdate($hash, 'state', 'updating alerts cache', 1);
 
-    Log3 $name, 5, "$name: DWD_OpenData_GetAlerts END";
+    ::Log3 $name, 5, "$name: GetAlerts END";
     return undef;
   } else {
     return "disabled";
   }
 }
 
-sub DWD_OpenData_ProcessAlerts($$$);
+sub ProcessAlerts($$$);
 
-=head2 DWD_OpenData_GetAlertsBlockingFn($)
+=head2 GetAlertsStart($)
 
 BlockingCall I<BlockingFn> callback
 
@@ -1109,7 +1127,7 @@ BlockingCall I<BlockingFn> callback
 
 =item * param hash: hash of DWD_OpenData device
 
-=item * return result required by function L</DWD_OpenData_GetAlertsFinishFn(@)>
+=item * return result required by function L</GetAlertsFinish(@)>
 
 =back
 
@@ -1120,15 +1138,15 @@ ATTENTION: This method is executed in a different process than FHEM.
 
 =cut
 
-sub DWD_OpenData_GetAlertsBlockingFn($)
+sub GetAlertsStart($)
 {
   my ($hash) = @_;
   my $name = $hash->{NAME};
   my $warncellId = $hash->{".warncellId"};
 
   # get communion (5, 8) or district (1, 9) alerts for Germany from DWD server
-  my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
-  my $alertLanguage = AttrVal($name, 'alertLanguage', 'DE');
+  my $communeUnion = IsCommuneUnionWarncellId($warncellId);
+  my $alertLanguage = ::AttrVal($name, 'alertLanguage', 'DE');
   my $url = 'https://opendata.dwd.de/weather/alerts/cap/'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_CELLS_STAT/Z_CAP_C_EDZW_LATEST_PVW_STATUS_PREMIUMCELLS_'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_'.$alertLanguage.'.zip';
   my $param = {
                 url        => $url,
@@ -1137,24 +1155,24 @@ sub DWD_OpenData_GetAlertsBlockingFn($)
                 hash       => $hash,
                 warncellId => $warncellId
               };
-  Log3 $name, 5, "$name: DWD_OpenData_GetAlertsBlockingFn START (PID $$): $url";
-  my ($httpError, $fileContent) = HttpUtils_BlockingGet($param);
+  ::Log3 $name, 5, "$name: GetAlertsStart START (PID $$): $url";
+  my ($httpError, $fileContent) = ::HttpUtils_BlockingGet($param);
 
   # process retrieved data
-  my $result = DWD_OpenData_ProcessAlerts($param, $httpError, $fileContent);
+  my $result = ProcessAlerts($param, $httpError, $fileContent);
 
-  Log3 $name, 5, "$name: DWD_OpenData_GetAlertsBlockingFn END";
+  ::Log3 $name, 5, "$name: GetAlertsStart END";
 
   return $result;
 }
 
-=head2 DWD_OpenData_ProcessAlerts($$$)
+=head2 ProcessAlerts($$$)
 
 =over
 
 =item * param hash: hash of DWD_OpenData device
 
-=item * return result required by function L</DWD_OpenData_GetAlertsFinishFn(@)>
+=item * return result required by function L</GetAlertsFinish(@)>
 
 =back
 
@@ -1165,7 +1183,7 @@ ATTENTION: This method is executed in a different process than FHEM.
 
 =cut
 
-sub DWD_OpenData_ProcessAlerts($$$)
+sub ProcessAlerts($$$)
 {
   my ($param, $httpError, $fileContent) = @_;
   my $time       = time();
@@ -1175,7 +1193,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
   my $code       = $param->{code};
   my $warncellId = $param->{warncellId};
 
-  Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts START (PID $$)";
+  ::Log3 $name, 5, "$name: ProcessAlerts START (PID $$)";
 
   my %alerts;
   eval {
@@ -1189,7 +1207,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
       die "no data retrieved from URL '$url'";
     }
 
-    Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts: data received";
+    ::Log3 $name, 5, "$name: ProcessAlerts: data received";
 
     # create memory mapped file from received data and unzip
     open my $zipFileHandle, '<', \$fileContent;
@@ -1203,7 +1221,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
         next;
       }
       # parse XML strings
-      Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts: parsing XML document";
+      ::Log3 $name, 5, "$name: ProcessAlerts: parsing XML document";
       my $dom = XML::LibXML->load_xml(string => $xmlString);
       if (!$dom) {
         die "parsing XML failed";
@@ -1213,10 +1231,10 @@ sub DWD_OpenData_ProcessAlerts($$$)
       my $alert = {};
       my $alertNode = $dom->documentElement();
       foreach my $alertChildNode ($alertNode->nonBlankChildNodes()) {
-        #Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts child node: " . $alertChildNode->nodeName();
+        #::Log3 $name, 5, "$name: ProcessAlerts child node: " . $alertChildNode->nodeName();
         if ($alertChildNode->nodeName() eq 'identifier') {
           $alert->{identifier} = $alertChildNode->textContent();
-          #Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts identifier: " . $alert->{identifier};
+          #::Log3 $name, 5, "$name: ProcessAlerts identifier: " . $alert->{identifier};
         } elsif ($alertChildNode->nodeName() eq 'status') {
           $alert->{status} = $alertChildNode->textContent();
         } elsif ($alertChildNode->nodeName() eq 'msgType') {
@@ -1233,7 +1251,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
           }
         } elsif ($alertChildNode->nodeName() eq 'info') {
           foreach my $infoChildNode ($alertChildNode->nonBlankChildNodes()) {
-            #Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts child node: '" . $infoChildNode->nodeName() . "'";
+            #::Log3 $name, 5, "$name: ProcessAlerts child node: '" . $infoChildNode->nodeName() . "'";
             if ($infoChildNode->nodeName() eq 'category') {
               $alert->{category} = $infoChildNode->textContent();
             } elsif ($infoChildNode->nodeName() eq 'event') {
@@ -1258,9 +1276,9 @@ sub DWD_OpenData_ProcessAlerts($$$)
                 $alert->{areaColor} =~ s/ /, /g;
               }
             } elsif ($infoChildNode->nodeName() eq 'onset') {
-              $alert->{onset} = DWD_OpenData_ParseCAPTime($infoChildNode->textContent());
+              $alert->{onset} = ParseCAPTime($infoChildNode->textContent());
             } elsif ($infoChildNode->nodeName() eq 'expires') {
-              $alert->{expires} = DWD_OpenData_ParseCAPTime($infoChildNode->textContent());
+              $alert->{expires} = ParseCAPTime($infoChildNode->textContent());
             } elsif ($infoChildNode->nodeName() eq 'headline') {
               $alert->{headline} = $infoChildNode->textContent();
             } elsif ($infoChildNode->nodeName() eq 'description') {
@@ -1277,7 +1295,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
                   $alert->{altitude} = [];
                   $alert->{ceiling} = [];
                 }
-                #Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts warncellid: " . $xpc->findvalue("./cap:geocode/cap:value");
+                #::Log3 $name, 5, "$name: ProcessAlerts warncellid: " . $xpc->findvalue("./cap:geocode/cap:value");
                 push(@{$alert->{warncellid}}, $xpc->findvalue("./cap:geocode/cap:value"));
                 push(@{$alert->{areaDesc}}, $xpc->findvalue("./cap:areaDesc"));
                 push(@{$alert->{altitude}}, $xpc->findvalue("./cap:altitude"));
@@ -1287,7 +1305,7 @@ sub DWD_OpenData_ProcessAlerts($$$)
           }
         }
       }
-      #Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts header: $alert->{identifier}, $alert->{status}, $alert->{msgType}: $alert->{headline}, $alert->{warncellids}[0]";
+      #::Log3 $name, 5, "$name: ProcessAlerts header: $alert->{identifier}, $alert->{status}, $alert->{msgType}: $alert->{headline}, $alert->{warncellids}[0]";
       if ($alert->{status} ne 'Test' && $alert->{responseType} ne 'Monitor') {
         $alerts{$alert->{identifier}} = $alert;
       }
@@ -1300,29 +1318,29 @@ sub DWD_OpenData_ProcessAlerts($$$)
     my @parts = split(/ at |\n/, $@); # discard anything after " at " or newline
     if (@parts) {
       $errorMessage = $parts[0];
-      Log3 $name, 4, "$name: DWD_OpenData_ProcessAlerts error: $parts[0]";
+      ::Log3 $name, 4, "$name: ProcessAlerts error: $parts[0]";
     } else {
       $errorMessage = $@;
-      Log3 $name, 4, "$name: DWD_OpenData_ProcessAlerts error: $@";
+      ::Log3 $name, 4, "$name: ProcessAlerts error: $@";
     }
   } else {
     # alerts parsed successfully
-    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+    my $communeUnion = IsCommuneUnionWarncellId($warncellId);
     if (defined($hash->{".alertsFile".$communeUnion})) {
       if (open(my $file, ">", $hash->{".alertsFile".$communeUnion})) {
         # write alerts to temp file
         binmode($file);
         my $frozenAlerts = freeze(\%alerts);
-        Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts temp file " . $hash->{".alertsFile".$communeUnion} . " alerts " . keys(%alerts) . " size " . length($frozenAlerts);
+        ::Log3 $name, 5, "$name: ProcessAlerts temp file " . $hash->{".alertsFile".$communeUnion} . " alerts " . keys(%alerts) . " size " . length($frozenAlerts);
         print($file $frozenAlerts);
         close($file);
       } else {
         $errorMessage = $!;
-        Log3 $name, 3, "$name: DWD_OpenData_ProcessAlerts error opening temp file: $errorMessage";
+        ::Log3 $name, 3, "$name: ProcessAlerts error opening temp file: $errorMessage";
       }
     } else {
       $errorMessage = 'result file name not defined';
-      Log3 $name, 3, "$name: DWD_OpenData_ProcessAlerts error: temp file name not defined";
+      ::Log3 $name, 3, "$name: ProcessAlerts error: temp file name not defined";
     }
   }
 
@@ -1330,22 +1348,22 @@ sub DWD_OpenData_ProcessAlerts($$$)
   $errorMessage =~ s/\n/; /g;
   $errorMessage =~ s/,/;/g;
 
-  Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts END";
+  ::Log3 $name, 5, "$name: ProcessAlerts END";
 
   return [$name, $errorMessage, $warncellId, $time];
 }
 
-=head2 DWD_OpenData_GetAlertsFinishFn(@)
+=head2 GetAlertsFinish(@)
 
-BlockingCall I<FinishFn> callback, expects array returned by function L</DWD_OpenData_GetAlertsBlockingFn($)> as single parameter
+BlockingCall I<FinishFn> callback, expects array returned by function L</GetAlertsStart($)> as single parameter
 
 =over
 
 =item * param name: name of DWD_OpenData device
 
-=item * param errorMessage: empty string or processing error message 
+=item * param errorMessage: empty string or processing error message
 
-=item * param warncellId: numeric warncell id for which alers have been requested, may also be C<DWD_OD_UPDATE_DISTRICTS>, C<DWD_OD_UPDATE_COMMUNEUNIONS> or C<DWD_OD_UPDATE_ALL>
+=item * param warncellId: numeric warncell id for which alers have been requested, may also be C<UPDATE_DISTRICTS>, C<UPDATE_COMMUNEUNIONS> or C<UPDATE_ALL>
 
 =item * param time: epoch time when alerts where received
 
@@ -1353,19 +1371,19 @@ BlockingCall I<FinishFn> callback, expects array returned by function L</DWD_Ope
 
 =cut
 
-sub DWD_OpenData_GetAlertsFinishFn(@)
+sub GetAlertsFinish(@)
 {
   my ($name, $errorMessage, $warncellId, $time) = @_;
 
   if (defined($name)) {
-    Log3 $name, 5, "$name: DWD_OpenData_GetAlertsFinishFn START (PID $$)";
+    ::Log3 $name, 5, "$name: GetAlertsFinish START (PID $$)";
 
-    my $hash = $defs{$name};
-    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
+    my $hash = $::defs{$name};
+    my $communeUnion = IsCommuneUnionWarncellId($warncellId);
 
     if (defined($errorMessage) && length($errorMessage) > 0) {
-      $dwd_alerts_updating[$communeUnion] = undef;
-      readingsSingleUpdate($hash, 'state', "alerts error: $errorMessage", 1);
+      $alerts_updating[$communeUnion] = undef;
+      ::readingsSingleUpdate($hash, 'state', "alerts error: $errorMessage", 1);
     } elsif (defined($hash->{".alertsFile".$communeUnion})) {
       # deserialize alerts
       my $fh = $hash->{".alertsFileHandle".$communeUnion};
@@ -1376,7 +1394,7 @@ sub DWD_OpenData_GetAlertsFinishFn(@)
       close($hash->{".alertsFileHandle".$communeUnion});
       unlink($hash->{".alertsFile".$communeUnion});
       my %newAlerts = %{thaw($frozenAlerts)};
-      Log3 $name, 5, "$name: DWD_OpenData_GetAlertsFinishFn temp file " . $hash->{".alertsFile".$communeUnion} . " alerts " . keys(%newAlerts) . " size " . length($frozenAlerts);
+      ::Log3 $name, 5, "$name: GetAlertsFinish temp file " . $hash->{".alertsFile".$communeUnion} . " alerts " . keys(%newAlerts) . " size " . length($frozenAlerts);
       delete($hash->{".alertsFile".$communeUnion});
 
       # @TODO delete global alert list when no differential updates are available
@@ -1386,7 +1404,7 @@ sub DWD_OpenData_GetAlertsFinishFn(@)
       foreach my $alert (values(%newAlerts)) {
         my $indentifierExists = defined($alerts->{$alert->{identifier}});
         if ($indentifierExists) {
-          Log3 $name, 5, "$name: DWD_OpenData_ProcessAlerts identifier " . $alert->{identifier} . " already known, data not updated";
+          ::Log3 $name, 5, "$name: ProcessAlerts identifier " . $alert->{identifier} . " already known, data not updated";
         } elsif ($alert->{msgType} eq 'Alert') {
           # add new alert
           $alerts->{$alert->{identifier}} = $alert;
@@ -1404,35 +1422,35 @@ sub DWD_OpenData_GetAlertsFinishFn(@)
           }
         }
       }
-      $dwd_alerts[$communeUnion] = $alerts;
-      $dwd_alerts_received[$communeUnion] = $time;
-      $dwd_alerts_updating[$communeUnion] = undef;
+      $alerts_data[$communeUnion] = $alerts;
+      $alerts_received[$communeUnion] = $time;
+      $alerts_updating[$communeUnion] = undef;
 
       if ($warncellId >= 0) {
         # update alert readings for warncell id
-        DWD_OpenData_UpdateAlerts($hash, $warncellId);
-      } elsif ($warncellId == DWD_OD_UPDATE_ALL) {
-        if (!defined($dwd_alerts_updating[0]) || (time() - $dwd_alerts_updating[0] >= 60)) {
+        UpdateAlerts($hash, $warncellId);
+      } elsif ($warncellId == UPDATE_ALL) {
+        if (!defined($alerts_updating[0]) || (time() - $alerts_updating[0] >= 60)) {
           # communeunions cache updated, start district cache update;
-          DWD_OpenData_GetAlerts($hash, DWD_OD_UPDATE_DISTRICTS);
+          GetAlerts($hash, UPDATE_DISTRICTS);
         }
       } else {
-        readingsSingleUpdate($hash, 'state', "alerts cache updated", 1);
+        ::readingsSingleUpdate($hash, 'state', "alerts cache updated", 1);
       }
     } else {
-      readingsSingleUpdate($hash, 'state', "alerts error: result file name not defined", 1);
-      Log3 $name, 3, "$name: DWD_OpenData_GetAlertsFinishFn error: temp file name not defined";
+      ::readingsSingleUpdate($hash, 'state', "alerts error: result file name not defined", 1);
+      ::Log3 $name, 3, "$name: GetAlertsFinish error: temp file name not defined";
     }
 
-    $hash->{ALERTS_IN_CACHE} = (ref($dwd_alerts[0]) eq 'HASH'? scalar(keys(%{$dwd_alerts[0]})) : 0) + (ref($dwd_alerts[1]) eq 'HASH'? scalar(keys(%{$dwd_alerts[1]})) : 0);
+    $hash->{ALERTS_IN_CACHE} = (ref($alerts_data[0]) eq 'HASH'? scalar(keys(%{$alerts_data[0]})) : 0) + (ref($alerts_data[1]) eq 'HASH'? scalar(keys(%{$alerts_data[1]})) : 0);
 
-    Log3 $name, 5, "$name: DWD_OpenData_GetAlertsFinishFn END";
+    ::Log3 $name, 5, "$name: GetAlertsFinish END";
   } else {
-    Log 3, "DWD_OpenData_GetAlertsFinishFn error: device name missing";
+    ::Log 3, "GetAlertsFinish error: device name missing";
   }
 }
 
-=head2 DWD_OpenData_GetAlertsAbortFn($)
+=head2 GetAlertsAbort($)
 
 BlockingCall I<AbortFn> callback
 
@@ -1444,17 +1462,17 @@ BlockingCall I<AbortFn> callback
 
 =cut
 
-sub DWD_OpenData_GetAlertsAbortFn($)
+sub GetAlertsAbort($)
 {
   my ($hash, $errorMessage) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 3, "$name: DWD_OpenData_GetAlertsAbortFn error: retrieving weather alerts failed, $errorMessage";
+  ::Log3 $name, 3, "$name: GetAlertsAbort error: retrieving weather alerts failed, $errorMessage";
 
-  readingsSingleUpdate($hash, 'state', "alerts error: retrieving weather alerts failed, $errorMessage", 1);
+  ::readingsSingleUpdate($hash, 'state', "alerts error: retrieving weather alerts failed, $errorMessage", 1);
 }
 
-=head2 DWD_OpenData_UpdateAlerts($$)
+=head2 UpdateAlerts($$)
 
 update alert readings for given warncell id from global alerts list
 
@@ -1470,19 +1488,19 @@ update alert readings for given warncell id from global alerts list
 
 =cut
 
-sub DWD_OpenData_UpdateAlerts($$)
+sub UpdateAlerts($$)
 {
   my ($hash, $warncellId) = @_;
   my $name = $hash->{NAME};
 
   # delete existing alert readings
-  CommandDeleteReading(undef, "$name a_.*");
+  ::CommandDeleteReading(undef, "$name a_.*");
 
-  readingsBeginUpdate($hash);
+  ::readingsBeginUpdate($hash);
 
   # order alerts by onset
-  my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
-  my $alerts = $dwd_alerts[$communeUnion];
+  my $communeUnion = IsCommuneUnionWarncellId($warncellId);
+  my $alerts = $alerts_data[$communeUnion];
   my @identifiers = sort { $alerts->{$a}->{onset} <=> $alerts->{$b}->{onset} } keys(%{$alerts});
   my $index = 0;
   foreach my $identifier (@identifiers) {
@@ -1493,23 +1511,23 @@ sub DWD_OpenData_UpdateAlerts($$)
       if ($wcId == $warncellId) {
         # alert found, create readings
         my $prefix = 'a_'.$index.'_';
-        readingsBulkUpdate($hash, $prefix.'category',     $alert->{category});
-        readingsBulkUpdate($hash, $prefix.'event',        $alert->{eventCode});
-        readingsBulkUpdate($hash, $prefix.'eventDesc',    encode('UTF-8', $alert->{event}));
-        readingsBulkUpdate($hash, $prefix.'eventGroup',   $alert->{eventGroup});
-        readingsBulkUpdate($hash, $prefix.'responseType', $alert->{responseType});
-        readingsBulkUpdate($hash, $prefix.'urgency',      $alert->{urgency});
-        readingsBulkUpdate($hash, $prefix.'severity',     $alert->{severity});
-        readingsBulkUpdate($hash, $prefix.'areaColor',    $alert->{areaColor});
-        readingsBulkUpdate($hash, $prefix.'onset',        DWD_OpenData_FormatDateTimeLocal($hash, $alert->{onset}));
-        readingsBulkUpdate($hash, $prefix.'expires',      DWD_OpenData_FormatDateTimeLocal($hash, $alert->{expires}));
-        readingsBulkUpdate($hash, $prefix.'headline',     encode('UTF-8', $alert->{headline}));
-        readingsBulkUpdate($hash, $prefix.'description',  encode('UTF-8', $alert->{description}));
-        readingsBulkUpdate($hash, $prefix.'instruction',  encode('UTF-8', $alert->{instruction}));
-        readingsBulkUpdate($hash, $prefix.'area',         $alert->{warncellid}[$areaIndex]);
-        readingsBulkUpdate($hash, $prefix.'areaDesc',     encode('UTF-8', $alert->{areaDesc}[$areaIndex]));
-        readingsBulkUpdate($hash, $prefix.'altitude',     floor(0.3048*$alert->{altitude}[$areaIndex] + 0.5));
-        readingsBulkUpdate($hash, $prefix.'ceiling',      floor(0.3048*$alert->{ceiling}[$areaIndex] + 0.5));
+        ::readingsBulkUpdate($hash, $prefix.'category',     $alert->{category});
+        ::readingsBulkUpdate($hash, $prefix.'event',        $alert->{eventCode});
+        ::readingsBulkUpdate($hash, $prefix.'eventDesc',    encode('UTF-8', $alert->{event}));
+        ::readingsBulkUpdate($hash, $prefix.'eventGroup',   $alert->{eventGroup});
+        ::readingsBulkUpdate($hash, $prefix.'responseType', $alert->{responseType});
+        ::readingsBulkUpdate($hash, $prefix.'urgency',      $alert->{urgency});
+        ::readingsBulkUpdate($hash, $prefix.'severity',     $alert->{severity});
+        ::readingsBulkUpdate($hash, $prefix.'areaColor',    $alert->{areaColor});
+        ::readingsBulkUpdate($hash, $prefix.'onset',        FormatDateTimeLocal($hash, $alert->{onset}));
+        ::readingsBulkUpdate($hash, $prefix.'expires',      FormatDateTimeLocal($hash, $alert->{expires}));
+        ::readingsBulkUpdate($hash, $prefix.'headline',     encode('UTF-8', $alert->{headline}));
+        ::readingsBulkUpdate($hash, $prefix.'description',  encode('UTF-8', $alert->{description}));
+        ::readingsBulkUpdate($hash, $prefix.'instruction',  encode('UTF-8', $alert->{instruction}));
+        ::readingsBulkUpdate($hash, $prefix.'area',         $alert->{warncellid}[$areaIndex]);
+        ::readingsBulkUpdate($hash, $prefix.'areaDesc',     encode('UTF-8', $alert->{areaDesc}[$areaIndex]));
+        ::readingsBulkUpdate($hash, $prefix.'altitude',     floor(0.3048*$alert->{altitude}[$areaIndex] + 0.5));
+        ::readingsBulkUpdate($hash, $prefix.'ceiling',      floor(0.3048*$alert->{ceiling}[$areaIndex] + 0.5));
         $index++;
         last();
       }
@@ -1518,21 +1536,30 @@ sub DWD_OpenData_UpdateAlerts($$)
 
     # license
     if ($index == 1 && defined($alert->{license})) {
-      readingsBulkUpdate($hash, 'a_copyright', encode('UTF-8', $alert->{license}));
+      ::readingsBulkUpdate($hash, 'a_copyright', encode('UTF-8', $alert->{license}));
     }
   }
 
   # alert count and receive time
-  readingsBulkUpdate($hash, 'a_count', $index);
-  readingsBulkUpdate($hash, "a_time", DWD_OpenData_FormatDateTimeLocal($hash, $dwd_alerts_received[$communeUnion]));
-  readingsBulkUpdate($hash, 'state', "alerts updated");
+  ::readingsBulkUpdate($hash, 'a_count', $index);
+  ::readingsBulkUpdate($hash, "a_time", FormatDateTimeLocal($hash, $alerts_received[$communeUnion]));
+  ::readingsBulkUpdate($hash, 'state', "alerts updated");
 
-  readingsEndUpdate($hash, 1);
+  ::readingsEndUpdate($hash, 1);
 
   return undef;
 }
 
-=head2 DWD_OpenData_Timer($)
+# -----------------------------------------------------------------------------
+
+package main;
+
+
+=head1 FHEM INIT FUNCTION
+
+=head2 DWD_OpenData_Initialize($)
+
+FHEM I<Initialize> function
 
 =over
 
@@ -1542,44 +1569,22 @@ sub DWD_OpenData_UpdateAlerts($$)
 
 =cut
 
-sub DWD_OpenData_Timer($)
-{
+sub DWD_OpenData_Initialize($) {
   my ($hash) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 5, "$name: DWD_OpenData_Timer START";
+  $hash->{DefFn}      = 'DWD_OpenData::Define';
+  $hash->{UndefFn}    = 'DWD_OpenData::Undef';
+  $hash->{ShutdownFn} = 'DWD_OpenData::Shutdown';
+  $hash->{AttrFn}     = 'DWD_OpenData::Attr';
+  $hash->{GetFn}      = 'DWD_OpenData::Get';
 
-  my $time = time();
-  my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = DWD_OpenData_Localtime($hash, $time);
-  my $actQuarter = int($tMin/15);
-
-  if ($actQuarter == 0) {
-    my $forecastStation = AttrVal($name, 'forecastStation', undef);
-    if (defined($forecastStation)) {
-      my $result = DWD_OpenData_GetForecast($hash, $forecastStation);
-      if (defined($result)) {
-        Log3 $name, 4, "$name: error retrieving forecast: $result";
-      }
-    }
-  }
-
-  my $warncellId = AttrVal($name, 'alertArea', undef);
-  if (defined($warncellId)) {
-    # skip update if already in progress
-    my $communeUnion = DWD_OpenData_IsCommuneUnionWarncellId($warncellId);
-    if (!defined($dwd_alerts_updating[$communeUnion]) || (time() - $dwd_alerts_updating[$communeUnion] >= 60)) {
-      my $result = DWD_OpenData_GetAlerts($hash, $warncellId);
-      if (defined($result)) {
-        Log3 $name, 4, "$name: error retrieving alerts: $result";
-      }
-    }
-  }
-
-  # schedule next for 5 seconds past next quarter
-  my $nextQuarterSeconds = DWD_OpenData_Timelocal($hash, 0, $actQuarter*15, $tHour, $tMday, $tMon, $tYear) + 905;
-  InternalTimer($nextQuarterSeconds, 'DWD_OpenData_Timer', $hash, 0);
-
-  Log3 $name, 5, "$name: DWD_OpenData_Timer END";
+  $hash->{AttrList} = 'disable:0,1 '
+                      .'forecastStation forecastDays forecastResolution:3,6 forecastWW2Text:0,1 '
+                      .'forecastProperties:uzsuSelect,Tx,Tn,Tm,Tg,TT,Td,dd,ff,fx,RR6,RRp6,RR12,RRp12,RR24,RRp24,ev,ww,VV,Nf,NL,NM,NH,SS24,PPPP '
+                      .'alertArea alertLanguage:DE,EN '
+                      .'timezone '
+                      .$readingFnAttributes;
 }
 
 # -----------------------------------------------------------------------------
@@ -1589,6 +1594,12 @@ sub DWD_OpenData_Timer($)
 # -----------------------------------------------------------------------------
 #
 #	CHANGES
+#
+# 16.06.2018 jensb
+# enhancement: trim alert values
+#
+# 14.06.2018 jensb
+# coding: functions converted to package DWD_OpenData
 #
 # 13.05.2018 jensb
 # bugfix: total alerts in cache#
@@ -1850,7 +1861,7 @@ sub DWD_OpenData_Timer($)
   </ul>
 
   Additionally there are some global alert readings:<br><br>
-  
+
   <ul>
     <ul>
       <li>a_time      - time the last alert update was downloaded based on the timezone attribute</li>
