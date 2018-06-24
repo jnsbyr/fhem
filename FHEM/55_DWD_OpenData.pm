@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 16745 2018-06-16 16:01:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 16745 2018-06-23 14:55:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -43,6 +43,7 @@ package DWD_OpenData;
 use strict;
 use warnings;
 
+use Encode;
 use File::Temp qw(tempfile);
 use IO::Uncompress::Unzip qw(unzip $UnzipError);
 use POSIX;
@@ -62,7 +63,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.009.001;
+our $VERSION   = 1.009.002;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -1593,7 +1594,10 @@ sub DWD_OpenData_Initialize($) {
 
 # -----------------------------------------------------------------------------
 #
-#	CHANGES
+# CHANGES
+#
+# 23.06.2018 jensb
+# bugfix: added use for package Encode
 #
 # 16.06.2018 jensb
 # enhancement: trim alert values
@@ -1602,7 +1606,7 @@ sub DWD_OpenData_Initialize($) {
 # coding: functions converted to package DWD_OpenData
 #
 # 13.05.2018 jensb
-# bugfix: total alerts in cache#
+# bugfix: total alerts in cache
 #
 # 06.05.2018 jensb
 # feature: detect empty alerts zip file
