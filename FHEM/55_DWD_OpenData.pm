@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 16745 2018-06-23 14:55:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 16745 2018-07-04 19:25:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -642,7 +642,7 @@ sub FormatWeekdayLocal($$) {
 sub ParseDateTimeLocal($$) {
   my ($hash, $s) = @_;
   my $t;
-  eval { $t = Timelocal($hash, strptime($s, '%Y-%m-%d %H:%M:%S')) };
+  eval { $t = Timelocal($hash, ::strptime($s, '%Y-%m-%d %H:%M:%S')) };
   return $t;
 }
 
@@ -663,7 +663,7 @@ sub ParseDateTimeLocal($$) {
 sub ParseDateLocal($$) {
   my ($hash, $s) = @_;
   my $t;
-  eval { $t = Timelocal($hash, strptime($s, '%Y-%m-%d')) };
+  eval { $t = Timelocal($hash, ::strptime($s, '%Y-%m-%d')) };
   return $t;
 }
 
@@ -1596,6 +1596,9 @@ sub DWD_OpenData_Initialize($) {
 #
 # CHANGES
 #
+# 04.07.2018 jensb
+# bugfix: mark strptime as non package function in ParseDateTimeLocal and ParseDateLocal
+#
 # 23.06.2018 jensb
 # bugfix: added use for package Encode
 #
@@ -1785,12 +1788,12 @@ sub DWD_OpenData_Initialize($) {
 
       <li>sample - relative time (0 .. 3 or 7) equivalent to multiples of 6 or 3 hours UTC depending on the forecastHours attribute</li><br>
 
-      <li>day properties (see raw data of station for time relation)
+      <li>day properties (typically for 06:00 station time, see raw data of station for time relation)
           <ul>
              <li>date       - date based on the timezone attribute</li>
              <li>weekday    - abbreviated weekday based on the timezone attribute in the language of your FHEM system</li>
-             <li>Tn [°C]    - minimum temperature of previous 24 hours (typically until 07:00 station time)</li>
-             <li>Tx [°C]    - maximum temperature of previous 24 hours (typically until 19:00 station time)</li>
+             <li>Tn [°C]    - minimum temperature of previous 24 hours</li>
+             <li>Tx [°C]    - maximum temperature of previous 24 hours (typically for 18:00 station time)</li>
              <li>Tm [°C]    - average temperature of previous 24 hours</li>
              <li>Tg [°C]    - minimum temperature 5 cm above ground of previous 24 hours</li>
              <li>ev [kg/m2] - evapotranspiration of previous 24 hours</li>
