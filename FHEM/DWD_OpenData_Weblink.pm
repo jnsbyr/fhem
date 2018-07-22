@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: DWD_OpenData_Weblink.pm 2.011.003 2018-07-14 18:27:00Z jensb $
+# $Id: DWD_OpenData_Weblink.pm 2.011.005 2018-07-22 09:36:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -56,7 +56,7 @@ use constant COLOR_WARM   => "orange";
 use constant COLOR_RAIN   => "blue";    # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.011.003;
+our $VERSION   = 2.011.005;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -901,7 +901,7 @@ sub AsHtmlH($;$$) {
         # before 6:00 UTC: min/max
         $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold"><span style="color:%s">%s</span>/<span style="color:%s">%s</span> °C</div>', $tempMinColor, $tempValueMin, $tempMaxColor, $tempValueMax);
       } elsif ($offsets[1] < 12/$timeResolution) {
-        # before 18:00 UTC: max
+        # up to 18:00 UTC: max
         $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold"><span style="color:%s">max %s °C</span></div>', $tempMaxColor, $tempValueMax);
       } else {
         # after 18:00 UTC: current temp
@@ -957,17 +957,35 @@ sub AsHtmlH($;$$) {
         $windSpeed = $value;
         $windDirection = ::ReadingsVal($d, $hourPrefix."_dd", "?");
       }
-      if ($index == 18/$timeResolution) {
-        # precipitation between 06:00 and 18:00
+      if ($i > 0 && $index == 18/$timeResolution) {
+        # precipitation between 06:00 and 18:00 for all days except 1st
         $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");
         $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");
       }
     }
-    if (($i == -1) && ((12/$timeResolution + $offsets[1]) >= 24/$timeResolution)) {
-      # when 2nd icon shows 2nd day: use 18:00 to 06:00
-      my $hourPrefix = "fc1_".6/$timeResolution;
-      $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");
-      $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");
+    if ($i == -1) {
+      # precipitation of 12 hours before time of 2nd icon of 1st day
+      my $day = 0;
+      my $index = 12/$timeResolution + $offsets[1];
+      if ($timeResolution < 6 && ($index*$timeResolution)%6 > 0) {
+        # RRp12 only available every 6 hours, use next
+        $index += (6 - (($index*$timeResolution)%6))/$timeResolution;
+      }
+      if ($index >= 24/$timeResolution) {
+        # when 2nd icon shows 2nd day: use 18:00 to 06:00
+        $day += 1;
+        $index = 6/$timeResolution;
+      }
+      my $hourPrefix = "fc".$day."_".$index;
+      $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");               # RRp12 available every 6 hours
+      if ($day > 0) {
+        $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");             # RR12 available every 12 hours at 06:00 and 18:00
+      } else {
+        my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6", "?");          # RR6 available every 6 hours
+        my $previousHourPrefix = "fc".$day."_".($index - 6/$timeResolution);
+        my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6", "?");  # RR6 available every 6 hours
+        $precipitation = $precipitation1 eq '?' || $precipitation2 eq '?'? '?' : $precipitation1 + $precipitation2;
+      }      
     }
     if (defined($windSpeed)) {
       if ($windSpeed < 1) {
@@ -1081,6 +1099,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 #
 # CHANGES
 #
+# 2018-07-21  feature: precipitation display at 1st icon refined to display precipitation up to time at 2nd icon
+#
 # 2018-07-04  feature: wind display at 1st icon refined to display max. speed of remaining day
 #
 # 2018-06-30  feature: temperature display at 2nd icon refined to display min/max/current temperature
@@ -1143,7 +1163,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
 <ul>
     The function <a href="#AsHtmlH($;$$)">DWD_OpenData_Weblink::AsHtmlH</a> returns the HTML code for a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
 
-    For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used and if the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
+    For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. For the 1st day the data shown depends on the current time. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used instead of the min/max values. The precipitation shown is for 12 hours up to the time of the 2nd icon. If the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
 
     The function requires the name of a DWD_OpenData device as 1st parameter and accepts two optional parameters to limit the number of days to display (1...7, default 4) and to use minimum of ground temperature and minimum air temperature instead of the minimum air temperature (0/1, default 0). <br><br>
 
