@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: DWD_OpenData_Weblink.pm 2.011.005 2018-07-22 09:36:00Z jensb $
+# $Id: DWD_OpenData_Weblink.pm 2.012.000 2018-07-22 18:57:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -56,7 +56,7 @@ use constant COLOR_WARM   => "orange";
 use constant COLOR_RAIN   => "blue";    # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.011.005;
+our $VERSION   = 2.012.000;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -633,9 +633,9 @@ sub ToForecastIndex($$$) {
   return @result;
 }
 
-=head2 AsHtmlH($;$$)
+=head2 PrepareData($;$$)
 
-create forecast display as a horizontal CSS table with two icons per day
+prepare data
 
 =over
 
@@ -645,23 +645,15 @@ create forecast display as a horizontal CSS table with two icons per day
 
 =item * param flag:           use minimum of ground and minimum temperature, optional, default 0
 
-=item * return HTML string
+=item * return number of items, time resolution, array of offsets, table data and alert messages
 
 =back
 
 =cut
 
-sub AsHtmlH($;$$) {
+sub PrepareData($;$$) {
   my ($d, $days, $useGroundTemperature) = @_;
-
-  $d = "<none>" if(!$d);
-  return "$d does not exist or is not a DWD_OpenData module<br>"
-        if(!$::defs{$d} || $::defs{$d}{TYPE} ne "DWD_OpenData");
-
-  # create horizontal weather forecast table
-  my $items = $days? 2*$days - 1 : 7;
-  my $ret = sprintf('<div class="weatherForecast">%s', GetCSS());
-
+  
   # find two samples of 1st day where at least the 2nd is still in the future
   my @offsets;
   my $now = time();
@@ -744,30 +736,227 @@ sub AsHtmlH($;$$) {
     }
   }
 
-  # weekday and time
   my $hash = $::defs{$d};
-  $ret .= '<div class="weatherHeaderRow">';
-  my @dayAndTime;
-  my @startTime;
+
+  # prepare data for items
+  my @data;
+  my $items = $days? 2*$days - 1 : 7;
   for (my $i=-1; $i<$items; $i++) {
+    my $entry = {};
+    push(@data, $entry);
+
+    # weekday and time (as text)
     my ($day, $index, $dayPrefix, $hourPrefix) = ToForecastIndex($i, \@offsets, $timeResolution);
     my $date = ::ReadingsVal($d, $dayPrefix."_date", "?");
     my $weekday = ::ReadingsVal($d, $dayPrefix."_weekday", "?");
     my $time = ::ReadingsVal($d, $hourPrefix."_time", "");
-    $dayAndTime[$i+1] = $weekday.' '.$time;
-    if (($i == 0 && $index >= 12/$timeResolution) || ($i > 0 && $i % 2 == 0)) {
-      $ret .= sprintf('<div class="weatherWeekday" id="weatherFontBold">%s</div>', $dayAndTime[$i+1]);
+    $entry->{dayAndTime} = $weekday.' '.$time;
+
+    # start time
+    if ($i == -1) {
+      $entry->{startTime} = $now;
     } else {
-      $ret .= sprintf('<div class="weatherWeekday">%s</div>', $dayAndTime[$i+1]);
+      $entry->{startTime} = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, $dayPrefix."_date", "1970-01-01") . ' ' . ::ReadingsVal($d, $hourPrefix."_time", "00:00") .':00');
     }
 
-    if ($i == -1) {
-      $startTime[$i+1] = $now;
-    } else {
-      $startTime[$i+1] = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, $dayPrefix."_date", "1970-01-01") . ' ' . ::ReadingsVal($d, $hourPrefix."_time", "00:00") .':00');
+    # weather description
+    $date = ::ReadingsVal($d, $dayPrefix."_date", "1970-01-01");
+    $time = ::ReadingsVal($d, $hourPrefix."_time", "00:00");
+    my $epoch = ::time_str2num($date.' '.$time.':00');
+    my $code = ::ReadingsVal($d, $hourPrefix."_ww", "-1");
+    $entry->{description} = "";
+    if ($code > 0 && $code != 2) {
+      $entry->{description} = ::ReadingsVal($d, $hourPrefix."_wwd", "?");
+    }
+    
+    # weather icon    
+    my $cloudCover = ::ReadingsVal($d, $hourPrefix."_Nf", undef);
+    $entry->{iconImageTag} = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), $cloudCover, $epoch);
+    
+    # weather alert key
+    $entry->{alertKey} = $i < 0? 'NOW' : "$day-$index";    
+
+    # temperature
+    if ($i <= 0) {
+      # 1st day
+      $entry->{tempValue} = ::ReadingsVal($d, $hourPrefix."_TT", "?");
+      $entry->{tempLabel} = '';
+
+      # for 2nd icon
+      $entry->{tempMinValue} = ::ReadingsVal($d, $dayPrefix."_Tn", "?");
+      my $tempMinColor = '';
+      if (looks_like_number($entry->{tempMinValue})) {
+        if ($entry->{tempMinValue} < TEMP_FREEZE) {
+          $tempMinColor = COLOR_FREEZE;
+        } elsif ($entry->{tempMinValue} > TEMP_WARM) {
+          $tempMinColor = COLOR_WARM;
+        }
+      }
+      $entry->{tempMinColor} = $tempMinColor;
+
+      $entry->{tempMaxValue} = ::ReadingsVal($d, $dayPrefix."_Tx", "?");
+      my $tempMaxColor = '';
+      if (looks_like_number($entry->{tempMaxValue})) {
+        if ($entry->{tempMaxValue} < TEMP_FREEZE) {
+          $tempMaxColor = COLOR_FREEZE;
+        } elsif ($entry->{tempMaxValue} > TEMP_WARM) {
+          $tempMaxColor = COLOR_WARM;
+        }
+      }
+      $entry->{tempMaxColor} = $tempMaxColor;
+    } elsif  ($i > 0) {
+      # 2nd to 7th day
+      my ($tempLabel, $tempValue);
+      my $firstIcon = $i % 2 == 1;
+      if ($firstIcon) {
+        $tempLabel = 'min';
+        $tempValue = ::ReadingsVal($d, $dayPrefix."_Tn", "?");
+        if (defined($useGroundTemperature) && $useGroundTemperature) {
+          # use min. ground temperature as alternative to min. air temperature
+          my $tempGround = ::ReadingsVal($d, $dayPrefix."_Tg", undef);
+          $tempValue = $tempGround if (defined($tempGround) && ($tempValue eq '?' || $tempGround < $tempValue));
+        }
+      } else {
+        $tempLabel = 'max';
+        $tempValue = ::ReadingsVal($d, "fc".$day."_Tx", "?");
+      }
+      $entry->{tempValue} = $tempValue;
+      $entry->{tempLabel} = $tempLabel;
+    }
+
+    my $tempColor = '';
+    if (looks_like_number($entry->{tempValue})) {
+      if ($entry->{tempValue} < TEMP_FREEZE) {
+        $tempColor = COLOR_FREEZE;
+      } elsif ($entry->{tempValue} > TEMP_WARM) {
+        $tempColor = COLOR_WARM;
+      }
+    }
+    $entry->{tempColor} = $tempColor;
+
+    # max wind speed and direction, precipitation
+    if ($i % 2 == 1) {
+      my ($windSpeed, $windDirection, $precipitation, $chanceOfRain);
+      for (my $index = 0; $index < 24/$timeResolution; $index++) {
+        my $hourPrefix = "fc".$day."_".$index;
+        my $value = ::ReadingsVal($d, $hourPrefix."_fx", undef);
+        if (defined($value) && (!defined($windSpeed) || $value > $windSpeed) && ($i > 0 || $now < ($epoch + 7200))) {
+          # max wind speed of (remaining) day
+          $windSpeed = $value;
+          $windDirection = ::ReadingsVal($d, $hourPrefix."_dd", "?");
+        }
+        if ($i > 0 && $index == 18/$timeResolution) {
+          # precipitation between 06:00 and 18:00 for all days except 1st
+          $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");  # RR12 available every 12 hours at 06:00 and 18:00
+          $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");  # RRp12 available every 6 hours
+        }
+      }
+      $entry->{windSpeed}     = $windSpeed;
+      $entry->{windDirection} = $windDirection;
+
+      # override precipitation of 1st day: 12 hours before time of 2nd icon
+      if ($i == -1) {
+        my $day = 0;
+        my $index = 12/$timeResolution + $offsets[1];
+        if ($timeResolution < 6 && ($index*$timeResolution)%6 > 0) {
+          # RRp12 only available every 6 hours, use next
+          $index += (6 - (($index*$timeResolution)%6))/$timeResolution;
+        }
+        if ($index >= 24/$timeResolution) {
+          # when 2nd icon shows 2nd day: use 18:00 to 06:00
+          $day += 1;
+          $index = 6/$timeResolution;
+        }
+        my $hourPrefix = "fc".$day."_".$index;
+        $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");               # RRp12 available every 6 hours
+        if ($day > 0) {
+          $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");             # RR12 available every 12 hours at 06:00 and 18:00
+        } else {
+          my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6", "?");          # RR6 available every 6 hours
+          my $previousHourPrefix = "fc".$day."_".($index - 6/$timeResolution);
+          my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6", "?");  # RR6 available every 6 hours
+          $precipitation = $precipitation1 eq '?' || $precipitation2 eq '?'? '?' : $precipitation1 + $precipitation2;
+        }
+      }
+      $entry->{chanceOfRain}  = $chanceOfRain;
+      $entry->{precipitation} = $precipitation;
+
+      # precipitation color
+      my $precipitationColor = '';
+      if ($entry->{precipitation} > 0 && $entry->{chanceOfRain} >= PRECIP_RAIN) {
+        $precipitationColor = COLOR_RAIN;
+      }
+      $entry->{precipitationColor} = $precipitationColor;
+
+      # wind labels and color
+      my ($windSpeedDescription, $windDirectionLabel, $windColor);
+      if (defined($entry->{windSpeed})) {
+        if ($entry->{windSpeed} < 1) {
+          $windSpeedDescription = 'Windstille';
+          $windDirectionLabel = '';
+          $windColor = '';
+        } else {
+          if ($entry->{windSpeed} < 6) {
+            $windSpeedDescription = 'leiser Zug';
+            $windColor = '';
+          } elsif ($entry->{windSpeed} < 12) {
+            $windSpeedDescription = 'leichte Brise';
+            $windColor = '';
+          } elsif ($entry->{windSpeed} < 20) {
+            $windSpeedDescription = 'schwache Brise';
+            $windColor = '';
+          } elsif ($entry->{windSpeed} < 29) {
+            $windSpeedDescription = 'mäßige Brise';
+            $windColor = '';
+          } elsif ($entry->{windSpeed} < 39) {
+            $windSpeedDescription = 'frische Brise';
+            $windColor = '';
+          } elsif ($entry->{windSpeed} < 50) {
+            $windSpeedDescription = 'starker Wind';
+            $windColor = 'gold';
+          } elsif ($entry->{windSpeed} < 62) {
+            $windSpeedDescription = 'steifer Wind';
+            $windColor = 'gold';
+          } elsif ($entry->{windSpeed} < 75) {
+            $windSpeedDescription = 'stürmischer Wind';
+            $windColor = 'gold';
+          } elsif ($entry->{windSpeed} < 88) {
+            $windSpeedDescription = 'Sturm';
+            $windColor = 'orange';
+          } elsif ($entry->{windSpeed} < 103) {
+            $windSpeedDescription = 'schwerer Sturm';
+            $windColor = 'orange';
+          } elsif ($entry->{windSpeed} < 118) {
+            $windSpeedDescription = 'orkanartiger Sturm';
+            $windColor = 'tomato';
+          } else {
+            $entry->{windSpeed} = 'Orkan';
+            $windColor = 'tomato';
+          }
+          if ($entry->{windDirection} >= 337.5 && $entry->{windDirection} < 22.5) {
+            $windDirectionLabel = 'N';
+          } elsif ($entry->{windDirection} < 67.5) {
+            $windDirectionLabel = 'NO';
+          } elsif ($entry->{windDirection} < 112.5) {
+            $windDirectionLabel = 'O';
+          } elsif ($entry->{windDirection} < 157.5) {
+            $windDirectionLabel = 'SO';
+          } elsif ($entry->{windDirection} < 202.5) {
+            $windDirectionLabel = 'S';
+          } elsif ($entry->{windDirection} < 247.5) {
+            $windDirectionLabel = 'SW';
+          } elsif ($entry->{windDirection} < 292.5) {
+            $windDirectionLabel = 'W';
+          } else {
+            $windDirectionLabel = 'NW';
+          }
+        }
+      }
+      $entry->{windSpeedDescription} = $windSpeedDescription;
+      $entry->{windColor}            = $windColor;
+      $entry->{windDirectionLabel}   = $windDirectionLabel;
     }
   }
-  $ret .= '</div>';
 
   # prepare alerts
   my $alerts = ::ReadingsVal($d, "a_count", 0);
@@ -777,8 +966,8 @@ sub AsHtmlH($;$$) {
       my ($day, $index) = ToForecastIndex($i, \@offsets, $timeResolution);
       if ($i >= 0) {
         # future alerts 0=rest of today, 1=tomorrow morning, 2=tomorrow evening, ...
-        my $fcStart = $startTime[$i+1];
-        my $fcEnd = ($i + 1) < $items? $startTime[$i+2] : ($fcStart + 43200 - 1); # 12 hours
+        my $fcStart = $data[$i+1]{startTime};
+        my $fcEnd = ($i + 1) < $items? $data[$i+2]{startTime} : ($fcStart + 43200 - 1); # 12 hours
         $alertMessages{"$day-$index"} = undef;
         for(my $a=0; $a<$alerts; $a++) {
           my $start = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_onset", '1970-01-01 00:00:00'));
@@ -797,8 +986,8 @@ sub AsHtmlH($;$$) {
         }
       } else {
         # currently valid alerts
-        my $fcStart = $startTime[0];
-        my $fcEnd = $startTime[1];
+        my $fcStart = $data[0]{startTime};
+        my $fcEnd = $data[1]{startTime};
         $alertMessages{'NOW'} = undef;
         for(my $a=0; $a<$alerts; $a++) {
           my $start = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_onset", '1970-01-01 00:00:00'));
@@ -817,124 +1006,103 @@ sub AsHtmlH($;$$) {
       }
     }
   }
+  
+  my @result;  
+  push(@result, $items);
+  push(@result, $timeResolution);
+  push(@result, \@offsets);
+  push(@result, \@data);
+  push(@result, \%alertMessages);
+
+  return @result;
+}
+
+=head2 AsHtmlH($;$$)
+
+create forecast display as a horizontal CSS table with two icons per day
+
+=over
+
+=item * param device name
+
+=item * param number of days: optional, default 4 (including today)
+
+=item * param flag:           use minimum of ground and minimum temperature, optional, default 0
+
+=item * return HTML string
+
+=back
+
+=cut
+
+sub AsHtmlH($;$$) {
+  my ($d, $days, $useGroundTemperature) = @_;
+
+  $d = "<none>" if(!$d);
+  return "$d does not exist or is not a DWD_OpenData module<br>"
+         if(!$::defs{$d} || $::defs{$d}{TYPE} ne "DWD_OpenData");
+        
+  my ($items, $timeResolution, $offsets, $data, $alertMessages) = PrepareData($d, $days, $useGroundTemperature);
+
+  # create horizontal weather forecast table
+  my $ret = sprintf('<div class="weatherForecast">%s', GetCSS());
+
+  # weekday and time
+  $ret .= '<div class="weatherHeaderRow">';
+  for (my $i=-1; $i<$items; $i++) {
+    my ($day, $index, $dayPrefix, $hourPrefix) = ToForecastIndex($i, $offsets, $timeResolution);
+    if (($i == 0 && $index >= 12/$timeResolution) || ($i > 0 && $i % 2 == 0)) {
+      $ret .= sprintf('<div class="weatherWeekday" id="weatherFontBold">%s</div>', $$data[$i+1]{dayAndTime});
+    } else {
+      $ret .= sprintf('<div class="weatherWeekday">%s</div>', $$data[$i+1]{dayAndTime});
+    }
+  }
+  $ret .= '</div>';
 
   # weather icon
   $ret .= '<div class="weatherDataRow">';
-  for(my $i=-1; $i<$items; $i++) {
-    my ($day, $index, $dayPrefix, $hourPrefix) = ToForecastIndex($i, \@offsets, $timeResolution);
-    my $date = ::ReadingsVal($d, $dayPrefix."_date", "1970-01-01");
-    my $time = ::ReadingsVal($d, $hourPrefix."_time", "00:00");
-    my $cloudCover = ::ReadingsVal($d, $hourPrefix."_Nf", undef);
-    my $epoch = ::time_str2num($date.' '.$time.':00');
-    my $imageTag = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), $cloudCover, $epoch);
-    my $alertKey = $i < 0? 'NOW' : "$day-$index";
-    if (defined($alertMessages{$alertKey})) {
+  for (my $i=-1; $i<$items; $i++) {
+    if (defined($$alertMessages{$$data[$i+1]{alertKey}})) {
+      # add alert data if alert exists
       # @TODO vary weatherAlertBoxCenter
-      $imageTag .= sprintf('<div class="weatherAlertIcon" title="Wetterwarnungen" tabindex="0"><div class="weatherOverlay"></div> <div class="weatherAlertBoxCenter"><a href="#close" title="Close" class="weatherAlertsClose">x</a><div class="weaterAlertsTitle">Wetterwarnungen %s</div>%s</div></div>', $dayAndTime[$i+1], $alertMessages{$alertKey});
+      $$data[$i+1]{iconImageTag} .= sprintf('<div class="weatherAlertIcon" title="Wetterwarnungen" tabindex="0"><div class="weatherOverlay"></div> <div class="weatherAlertBoxCenter"><a href="#close" title="Close" class="weatherAlertsClose">x</a><div class="weaterAlertsTitle">Wetterwarnungen %s</div>%s</div></div>', $$data[$i+1]{dayAndTime}, $$alertMessages{$$data[$i+1]{alertKey}});
     }
-    $ret .= sprintf('<div class="weatherIcon">%s</div>', $imageTag);
+    $ret .= sprintf('<div class="weatherIcon">%s</div>', $$data[$i+1]{iconImageTag});
   }
   $ret .= '</div>';
 
   # weather description
   $ret .= '<div class="weatherDataRow">';
-  for(my $i=-1; $i<$items; $i++) {
-    my ($day, $index, $dayPrefix, $hourPrefix) = ToForecastIndex($i, \@offsets, $timeResolution);
-    my $date = ::ReadingsVal($d, $dayPrefix."_date", "1970-01-01");
-    my $time = ::ReadingsVal($d, $hourPrefix."_time", "00:00");
-    my $epoch = ::time_str2num($date.' '.$time.':00');
-    my $code = ::ReadingsVal($d, $hourPrefix."_ww", "-1");
-    my $description = "";
-    if ($code > 0 && $code != 2) {
-      $description = ::ReadingsVal($d, $hourPrefix."_wwd", "?");
-    }
-    $ret .= sprintf('<div class="weatherCondition">%s</div>', $description);
+  for (my $i=-1; $i<$items; $i++) {
+    $ret .= sprintf('<div class="weatherCondition">%s</div>', $$data[$i+1]{description});
   }
   $ret .= '</div>';
 
   # temperature
   $ret .= '<div class="weatherDataRow">';
-  for(my $i=-1; $i<$items; $i++) {
-    my ($day, $index, $dayPrefix, $hourPrefix) = ToForecastIndex($i, \@offsets, $timeResolution);
+  for (my $i=-1; $i<$items; $i++) {
     if ($i == -1) {
-      # current
-      my $tempValue = ::ReadingsVal($d, $hourPrefix."_TT", "?");
-      my $tempColor = '';
-      if (looks_like_number($tempValue)) {
-        if ($tempValue < TEMP_FREEZE) {
-          $tempColor = COLOR_FREEZE;
-        } elsif ($tempValue > TEMP_WARM) {
-          $tempColor = COLOR_WARM;
-        }
-      }
-      $ret .= sprintf('<div class="weatherTemperature" style="color:%s">%s °C</div>', $tempColor, $tempValue);
+      # 1st part of current day
+      $ret .= sprintf('<div class="weatherTemperature" style="color:%s">%s °C</div>', $$data[$i+1]{tempColor}, $$data[$i+1]{tempValue});
     } elsif ($i == 0) {
       # 2nd part of current day
-      my $tempValueMin = ::ReadingsVal($d, $dayPrefix."_Tn", "?");
-      my $tempMinColor = '';
-      if (looks_like_number($tempValueMin)) {
-        if ($tempValueMin < TEMP_FREEZE) {
-          $tempMinColor = COLOR_FREEZE;
-        } elsif ($tempValueMin > TEMP_WARM) {
-          $tempMinColor = COLOR_WARM;
-        }
-      }
-      my $tempValueMax = ::ReadingsVal($d, $dayPrefix."_Tx", "?");
-      my $tempMaxColor = '';
-      if (looks_like_number($tempValueMax)) {
-        if ($tempValueMax < TEMP_FREEZE) {
-          $tempMaxColor = COLOR_FREEZE;
-        } elsif ($tempValueMax > TEMP_WARM) {
-          $tempMaxColor = COLOR_WARM;
-        }
-      }
-      my $tempValue = ::ReadingsVal($d, $hourPrefix."_TT", "?");
-      my $tempColor = '';
-      if (looks_like_number($tempValue)) {
-        if ($tempValue < TEMP_FREEZE) {
-          $tempColor = COLOR_FREEZE;
-        } elsif ($tempValue > TEMP_WARM) {
-          $tempColor = COLOR_WARM;
-        }
-      }
-      if ($offsets[0] < 0) {
+      if ($$offsets[0] < 0) {
         # before 6:00 UTC: min/max
-        $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold"><span style="color:%s">%s</span>/<span style="color:%s">%s</span> °C</div>', $tempMinColor, $tempValueMin, $tempMaxColor, $tempValueMax);
-      } elsif ($offsets[1] < 12/$timeResolution) {
+        $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold"><span style="color:%s">%s</span>/<span style="color:%s">%s</span> °C</div>', $$data[$i+1]{tempMinColor}, $$data[$i+1]{tempMinValue}, $$data[$i+1]{tempMaxColor}, $$data[$i+1]{tempMaxValue});
+      } elsif ($$offsets[1] < 12/$timeResolution) {
         # up to 18:00 UTC: max
-        $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold"><span style="color:%s">max %s °C</span></div>', $tempMaxColor, $tempValueMax);
+        $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold"><span style="color:%s">max %s °C</span></div>', $$data[$i+1]{tempMaxColor}, $$data[$i+1]{tempMaxValue});
       } else {
         # after 18:00 UTC: current temp
-        $ret .= sprintf('<div class="weatherTemperature" style="color:%s">%s °C</div>', $tempColor, $tempValue);
+        $ret .= sprintf('<div class="weatherTemperature" style="color:%s">%s °C</div>', $$data[$i+1]{tempColor}, $$data[$i+1]{tempValue});
       }
     } else {
       # 2nd to 7th day
-      my ($tempLabel, $tempValue);
       my $firstIcon = $i % 2 == 1;
       if ($firstIcon) {
-        $tempLabel = 'min';
-        $tempValue = ::ReadingsVal($d, $dayPrefix."_Tn", "?");
-        if (defined($useGroundTemperature) && $useGroundTemperature) {
-          # use min. ground temperature as alternative to min. air temperature
-          my $tempGround = ::ReadingsVal($d, $dayPrefix."_Tg", undef);
-          $tempValue = $tempGround if (defined($tempGround) && ($tempValue eq '?' || $tempGround < $tempValue));
-        }
+        $ret .= sprintf('<div class="weatherTemperature" style="color:%s">%s %s °C</div>', $$data[$i+1]{tempColor}, $$data[$i+1]{tempLabel}, $$data[$i+1]{tempValue});
       } else {
-        $tempLabel = 'max';
-        $tempValue = ::ReadingsVal($d, "fc".$day."_Tx", "?");
-      }
-      my $tempColor = '';
-      if (looks_like_number($tempValue)) {
-        if ($tempValue < TEMP_FREEZE) {
-          $tempColor = COLOR_FREEZE;
-        } elsif ($tempValue > TEMP_WARM) {
-          $tempColor = COLOR_WARM;
-        }
-      }
-      if ($firstIcon) {
-        $ret .= sprintf('<div class="weatherTemperature" style="color:%s">%s %s °C</div>', $tempColor, $tempLabel, $tempValue);
-      } else {
-        $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold" style="color:%s">%s %s °C</div>', $tempColor, $tempLabel, $tempValue);
+        $ret .= sprintf('<div class="weatherTemperature" id="weatherFontBold" style="color:%s">%s %s °C</div>', $$data[$i+1]{tempColor}, $$data[$i+1]{tempLabel}, $$data[$i+1]{tempValue});
       }
     }
   }
@@ -942,122 +1110,14 @@ sub AsHtmlH($;$$) {
 
   # max wind speed and direction, precipitation
   $ret .= '<div class="weatherDataRow">';
-  for(my $i=-1; $i<$items; $i+=2) {
-    my $day = int(($i + 1)/2);
-    my ($windSpeed, $windDirection, $windColor, $precipitation, $chanceOfRain);
-    for (my $index = 0; $index < 24/$timeResolution; $index++) {
-      my $dayPrefix = "fc".$day;
-      my $hourPrefix = "fc".$day."_".$index;
-      my $date = ::ReadingsVal($d, $dayPrefix."_date", "1970-01-01");
-      my $time = ::ReadingsVal($d, $hourPrefix."_time", "00:00");
-      my $epoch = ::time_str2num($date.' '.$time.':00');      
-      my $value = ::ReadingsVal($d, $hourPrefix."_fx", undef);
-      if (defined($value) && (!defined($windSpeed) || $value > $windSpeed) && ($i > 0 || $now < ($epoch + 7200))) {
-        # max wind speed of (remaining) day
-        $windSpeed = $value;
-        $windDirection = ::ReadingsVal($d, $hourPrefix."_dd", "?");
-      }
-      if ($i > 0 && $index == 18/$timeResolution) {
-        # precipitation between 06:00 and 18:00 for all days except 1st
-        $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");
-        $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");
-      }
-    }
-    if ($i == -1) {
-      # precipitation of 12 hours before time of 2nd icon of 1st day
-      my $day = 0;
-      my $index = 12/$timeResolution + $offsets[1];
-      if ($timeResolution < 6 && ($index*$timeResolution)%6 > 0) {
-        # RRp12 only available every 6 hours, use next
-        $index += (6 - (($index*$timeResolution)%6))/$timeResolution;
-      }
-      if ($index >= 24/$timeResolution) {
-        # when 2nd icon shows 2nd day: use 18:00 to 06:00
-        $day += 1;
-        $index = 6/$timeResolution;
-      }
-      my $hourPrefix = "fc".$day."_".$index;
-      $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");               # RRp12 available every 6 hours
-      if ($day > 0) {
-        $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");             # RR12 available every 12 hours at 06:00 and 18:00
+  for (my $i=-1; $i<$items; $i+=2) {
+    if (defined($$data[$i+1]{windSpeedDescription})) {
+      if (length($$data[$i+1]{windColor}) > 0) {
+        $ret .= sprintf('<div class="weatherWind" style="color:black; background-color:%s">%s %s</div>', $$data[$i+1]{windColor}, $$data[$i+1]{windSpeedDescription}, $$data[$i+1]{windDirectionLabel});
       } else {
-        my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6", "?");          # RR6 available every 6 hours
-        my $previousHourPrefix = "fc".$day."_".($index - 6/$timeResolution);
-        my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6", "?");  # RR6 available every 6 hours
-        $precipitation = $precipitation1 eq '?' || $precipitation2 eq '?'? '?' : $precipitation1 + $precipitation2;
-      }      
-    }
-    if (defined($windSpeed)) {
-      if ($windSpeed < 1) {
-        $windSpeed = 'Windstille';
-        $windDirection = '';
-        $windColor = '';
-      } else {
-        if ($windSpeed < 6) {
-          $windSpeed = 'leiser Zug';
-          $windColor = '';
-        } elsif ($windSpeed < 12) {
-          $windSpeed = 'leichte Brise';
-          $windColor = '';
-        } elsif ($windSpeed < 20) {
-          $windSpeed = 'schwache Brise';
-          $windColor = '';
-        } elsif ($windSpeed < 29) {
-          $windSpeed = 'mäßige Brise';
-          $windColor = '';
-        } elsif ($windSpeed < 39) {
-          $windSpeed = 'frische Brise';
-          $windColor = '';
-        } elsif ($windSpeed < 50) {
-          $windSpeed = 'starker Wind';
-          $windColor = 'gold';
-        } elsif ($windSpeed < 62) {
-          $windSpeed = 'steifer Wind';
-          $windColor = 'gold';
-        } elsif ($windSpeed < 75) {
-          $windSpeed = 'stürmischer Wind';
-          $windColor = 'gold';
-        } elsif ($windSpeed < 88) {
-          $windSpeed = 'Sturm';
-          $windColor = 'orange';
-        } elsif ($windSpeed < 103) {
-          $windSpeed = 'schwerer Sturm';
-          $windColor = 'orange';
-        } elsif ($windSpeed < 118) {
-          $windSpeed = 'orkanartiger Sturm';
-          $windColor = 'tomato';
-        } else {
-          $windSpeed = 'Orkan';
-          $windColor = 'tomato';
-        }
-        if ($windDirection >= 337.5 && $windDirection < 22.5) {
-          $windDirection = 'N';
-        } elsif ($windDirection < 67.5) {
-          $windDirection = 'NO';
-        } elsif ($windDirection < 112.5) {
-          $windDirection = 'O';
-        } elsif ($windDirection < 157.5) {
-          $windDirection = 'SO';
-        } elsif ($windDirection < 202.5) {
-          $windDirection = 'S';
-        } elsif ($windDirection < 247.5) {
-          $windDirection = 'SW';
-        } elsif ($windDirection < 292.5) {
-          $windDirection = 'W';
-        } else {
-          $windDirection = 'NW';
-        }
+        $ret .= sprintf('<div class="weatherWind">%s %s</div>', $$data[$i+1]{windSpeedDescription}, $$data[$i+1]{windDirectionLabel});
       }
-      if (length($windColor) > 0) {
-        $ret .= sprintf('<div class="weatherWind" style="color:black; background-color:%s">%s %s</div>', $windColor, $windSpeed, $windDirection);
-      } else {
-        $ret .= sprintf('<div class="weatherWind">%s %s</div>', $windSpeed, $windDirection);
-      }
-      my $tempColor = '';
-      if ($precipitation > 0 && $chanceOfRain >= PRECIP_RAIN) {
-        $tempColor = COLOR_RAIN;
-      }
-      $ret .= sprintf('<div class="weatherWind" style="color:%s">%s mm %s %%</div>', $tempColor, $precipitation, $chanceOfRain);
+      $ret .= sprintf('<div class="weatherWind" style="color:%s">%s mm %s %%</div>', $$data[$i+1]{precipitationColor}, $$data[$i+1]{precipitation}, $$data[$i+1]{chanceOfRain});
     }
   }
   $ret .= '</div>';
@@ -1098,6 +1158,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 2018-07-22  coding:  split off data preparation from HTML generation into function PrepareData
 #
 # 2018-07-21  feature: precipitation display at 1st icon refined to display precipitation up to time at 2nd icon
 #
@@ -1163,7 +1225,9 @@ sub DWD_OpenData_Weblink_Initialize($) {
 <ul>
     The function <a href="#AsHtmlH($;$$)">DWD_OpenData_Weblink::AsHtmlH</a> returns the HTML code for a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
 
-    For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. For the 1st day the data shown depends on the current time. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used instead of the min/max values. The precipitation shown is for 12 hours up to the time of the 2nd icon. If the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
+    For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. <br><br>
+    
+    For the 1st day the data shown depends on the current time. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used instead of the min/max values. The precipitation shown is for 12 hours up to the time of the 2nd icon. If the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
 
     The function requires the name of a DWD_OpenData device as 1st parameter and accepts two optional parameters to limit the number of days to display (1...7, default 4) and to use minimum of ground temperature and minimum air temperature instead of the minimum air temperature (0/1, default 0). <br><br>
 
@@ -1175,7 +1239,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
 
     Notes:
     <ul>
-        <li>The properties TT, Tx, Tn, Tg, dd, fx, RR12, RRp12, ww, wwd and Nf must be enabled in your DWD_OpenData device.
+        <li>The properties TT, Tx, Tn, Tg, dd, fx, RR6, RR12, RRp12, ww, wwd and Nf must be enabled in your DWD_OpenData device.
         </li>
         <li>This module must be loaded by FHEM before first use. Add <code>eval "use DWD_OpenData_Weblink;";</code>
             e.g. to your <i>99_myUtils.pm</i>. Alternatively you can rename this file to <i>99_DWD_OpenData_Weblink.pm</i>.
