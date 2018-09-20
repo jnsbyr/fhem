@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: DWD_OpenData_Weblink.pm 2.012.000 2018-07-22 18:57:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201303 2018-09-03 18:15:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -46,17 +46,23 @@ use Time::Piece;
 use DateTime;
 use Scalar::Util qw(looks_like_number);
 
+use feature qw(switch);
+no if $] >= 5.017011, warnings => 'experimental';
+
 # font color configuration
 use constant TEMP_FREEZE  => 3;  # < blue
 use constant TEMP_WARM    => 25; # > orange
 use constant PRECIP_RAIN  => 50; # > blue
 
-use constant COLOR_FREEZE => "blue";    # light background -> blue, dark background -> skyblue
-use constant COLOR_WARM   => "orange";
-use constant COLOR_RAIN   => "blue";    # light background -> blue, dark background -> skyblue
+use constant THEME_LIGHT  => 0; # default
+use constant THEME_DARK   => 1; 
+
+use constant COLOR_FREEZE => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
+use constant COLOR_WARM   => [ "orange", "orange" ];
+use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.012.000;
+our $VERSION   = 2.013.003;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -291,8 +297,89 @@ use constant ICONHIGHT => 120;
 use constant ICONWIDTH => 175;
 use constant ICONSCALE => 0.5;
 
-# get CSS style
-sub GetCSS() {
+
+=head1 FHEM CALLBACK FUNCTIONS
+
+=head2 Define($$)
+
+FHEM I<DefFn>
+
+=over
+
+=item * param hash: hash of DWD_OpenData_Weblink device
+
+=item * param def: module define parameters, will be ignored
+
+=item * return undef on success or error message
+
+=back
+
+=cut
+
+sub Define($$)
+{
+  my ($hash, $def) = @_;
+  my $name = $hash->{NAME};
+
+  ::readingsSingleUpdate($hash, 'state', 'initialized', 1);
+  
+  return undef;
+}
+
+=head2 Get($@)
+
+FHEM I<GetFn>
+
+=over
+
+=item * param hash: hash of DWD_OpenData_Weblink device
+
+=item * param a: array of FHEM command line arguments, min. length 2, a[1] holds get command
+
+=item * return requested data or error message
+
+=back
+
+=cut
+
+sub Get($@)
+{
+  my ($hash, @a) = @_;
+  my $name = $hash->{NAME};
+
+  my $result = undef;
+  my $command = lc($a[1]);
+  given($command) {
+    when("horizontalforecast") {
+      my $ioDev = ::AttrVal($name, 'IODev', undef);
+      my $days = ::AttrVal($name, 'forecastDays', 4);
+      my $useGroundTemperature = ::AttrVal($name, 'useGroundTemperature', 0);
+      my $theme = ::AttrVal($name, 'theme', undef) eq 'dark'? THEME_DARK : THEME_LIGHT;
+      $result = GetForecastHtmlH($ioDev, $days, $useGroundTemperature, $theme);
+    }
+
+    default {
+      $result = "unknown get command $command, choose one of horizontalForecast";
+    }
+  }
+
+  return $result;
+}
+
+=head2 GetForecastCssH()
+
+get CSS style for horizontal forecast
+
+=over
+
+=item * return CSS style for horizontal forecast
+
+=back
+
+=cut
+
+sub GetForecastCssH()
+{
   my $style = '
   <style type="text/css">
     /* weather table with fixed column width */
@@ -633,7 +720,7 @@ sub ToForecastIndex($$$) {
   return @result;
 }
 
-=head2 PrepareData($;$$)
+=head2 PrepareForecastData($$$$)
 
 prepare data
 
@@ -641,9 +728,11 @@ prepare data
 
 =item * param device name
 
-=item * param number of days: optional, default 4 (including today)
+=item * param number of days: default 4 (including today)
 
-=item * param flag:           use minimum of ground and minimum temperature, optional, default 0
+=item * param flag:           use minimum of ground and minimum temperature, default 0
+
+=item * param theme:          background color schema "light" or "dark", default "light"
 
 =item * return number of items, time resolution, array of offsets, table data and alert messages
 
@@ -651,9 +740,9 @@ prepare data
 
 =cut
 
-sub PrepareData($;$$) {
-  my ($d, $days, $useGroundTemperature) = @_;
-  
+sub PrepareForecastData($$$$) {
+  my ($d, $days, $useGroundTemperature, $theme) = @_;
+
   # find two samples of 1st day where at least the 2nd is still in the future
   my @offsets;
   my $now = time();
@@ -768,13 +857,13 @@ sub PrepareData($;$$) {
     if ($code > 0 && $code != 2) {
       $entry->{description} = ::ReadingsVal($d, $hourPrefix."_wwd", "?");
     }
-    
-    # weather icon    
+
+    # weather icon
     my $cloudCover = ::ReadingsVal($d, $hourPrefix."_Nf", undef);
     $entry->{iconImageTag} = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), $cloudCover, $epoch);
-    
+
     # weather alert key
-    $entry->{alertKey} = $i < 0? 'NOW' : "$day-$index";    
+    $entry->{alertKey} = $i < 0? 'NOW' : "$day-$index";
 
     # temperature
     if ($i <= 0) {
@@ -787,9 +876,9 @@ sub PrepareData($;$$) {
       my $tempMinColor = '';
       if (looks_like_number($entry->{tempMinValue})) {
         if ($entry->{tempMinValue} < TEMP_FREEZE) {
-          $tempMinColor = COLOR_FREEZE;
+          $tempMinColor = COLOR_FREEZE->[$theme];
         } elsif ($entry->{tempMinValue} > TEMP_WARM) {
-          $tempMinColor = COLOR_WARM;
+          $tempMinColor = COLOR_WARM->[$theme];
         }
       }
       $entry->{tempMinColor} = $tempMinColor;
@@ -798,9 +887,9 @@ sub PrepareData($;$$) {
       my $tempMaxColor = '';
       if (looks_like_number($entry->{tempMaxValue})) {
         if ($entry->{tempMaxValue} < TEMP_FREEZE) {
-          $tempMaxColor = COLOR_FREEZE;
+          $tempMaxColor = COLOR_FREEZE->[$theme];
         } elsif ($entry->{tempMaxValue} > TEMP_WARM) {
-          $tempMaxColor = COLOR_WARM;
+          $tempMaxColor = COLOR_WARM->[$theme];
         }
       }
       $entry->{tempMaxColor} = $tempMaxColor;
@@ -827,9 +916,9 @@ sub PrepareData($;$$) {
     my $tempColor = '';
     if (looks_like_number($entry->{tempValue})) {
       if ($entry->{tempValue} < TEMP_FREEZE) {
-        $tempColor = COLOR_FREEZE;
+        $tempColor = COLOR_FREEZE->[$theme];
       } elsif ($entry->{tempValue} > TEMP_WARM) {
-        $tempColor = COLOR_WARM;
+        $tempColor = COLOR_WARM->[$theme];
       }
     }
     $entry->{tempColor} = $tempColor;
@@ -884,7 +973,7 @@ sub PrepareData($;$$) {
       # precipitation color
       my $precipitationColor = '';
       if ($entry->{precipitation} > 0 && $entry->{chanceOfRain} >= PRECIP_RAIN) {
-        $precipitationColor = COLOR_RAIN;
+        $precipitationColor = COLOR_RAIN->[$theme];
       }
       $entry->{precipitationColor} = $precipitationColor;
 
@@ -1006,8 +1095,8 @@ sub PrepareData($;$$) {
       }
     }
   }
-  
-  my @result;  
+
+  my @result;
   push(@result, $items);
   push(@result, $timeResolution);
   push(@result, \@offsets);
@@ -1017,17 +1106,19 @@ sub PrepareData($;$$) {
   return @result;
 }
 
-=head2 AsHtmlH($;$$)
+=head2 GetForecastHtmlH($$$$)
 
-create forecast display as a horizontal CSS table with two icons per day
+create forecast display as a horizontal CSS table with two icons per day (without CSS style)
 
 =over
 
-=item * param device name
+=item * param DWD_OpenData device name
 
-=item * param number of days: optional, default 4 (including today)
+=item * param number of days: default 4 (including today)
 
-=item * param flag:           use minimum of ground and minimum temperature, optional, default 0
+=item * param flag:           use minimum of ground and minimum temperature, default 0
+
+=item * param theme:          background color schema "light" or "dark", default "light"
 
 =item * return HTML string
 
@@ -1035,17 +1126,17 @@ create forecast display as a horizontal CSS table with two icons per day
 
 =cut
 
-sub AsHtmlH($;$$) {
-  my ($d, $days, $useGroundTemperature) = @_;
+sub GetForecastHtmlH($$$$) {
+  my ($name, $days, $useGroundTemperature, $theme) = @_;
 
-  $d = "<none>" if(!$d);
-  return "$d does not exist or is not a DWD_OpenData module<br>"
-         if(!$::defs{$d} || $::defs{$d}{TYPE} ne "DWD_OpenData");
-        
-  my ($items, $timeResolution, $offsets, $data, $alertMessages) = PrepareData($d, $days, $useGroundTemperature);
+  $name = "<none>" if(!$name);
+  return "DWD_OpenData_Weblink: device $name does not exist or is not a DWD_OpenData module<br>"
+         if(!$::defs{$name} || $::defs{$name}{TYPE} ne "DWD_OpenData");
+
+  my ($items, $timeResolution, $offsets, $data, $alertMessages) = PrepareForecastData($name, $days, $useGroundTemperature, $theme);
 
   # create horizontal weather forecast table
-  my $ret = sprintf('<div class="weatherForecast">%s', GetCSS());
+  my $ret = '<div class="weatherForecast">';
 
   # weekday and time
   $ret .= '<div class="weatherHeaderRow">';
@@ -1122,7 +1213,63 @@ sub AsHtmlH($;$$) {
   }
   $ret .= '</div>';
 
-  $ret .= '</div>';
+  return $ret;
+}
+
+=head2 GetForecastH($)
+
+create forecast display as a horizontal CSS table with two icons per day
+including CSS style and optional auto refresh
+
+=over
+
+=item * param DWD_OpenData_Weblink device name
+
+=item * return HTML string
+
+=back
+
+=cut
+
+sub AsHtmlH($) {
+  my ($name) = @_;
+
+  $name = "<none>" if(!$name);
+  return "DWD_OpenData_Weblink: device $name does not exist or is not a DWD_OpenData_Weblink module<br>"
+         if(!$::defs{$name} || $::defs{$name}{TYPE} ne "DWD_OpenData_Weblink");
+
+  my $ret = '';
+  my $refreshRate = ::AttrVal($name, 'refreshRate', 0); # [s]
+  if ($refreshRate > 0) {
+    # execute "get <deviceName> horizontalForecast" immediately and again every 5 minutes
+    $ret .= '<script> ';
+    $ret .= 'function getDWDOpenDataWeblink() { ';
+    $ret .=   'var fwcsrf = document.getElementsByTagName("body")[0].getAttribute("fwcsrf"); ';
+    $ret .=   '$.get("/fhem?cmd=get%20' . $name . '%20horizontalForecast&XHR=1&fwcsrf=" + fwcsrf, function(forecastElements) { ';
+    $ret .=     '$("#DWD_OpenData_Weblink").html(forecastElements);';
+    $ret .=   '});';
+    $ret .= '} ';
+    $ret .= '$(document).ready(function() { ';
+    $ret .=   'getDWDOpenDataWeblink(); ';
+    $ret .=   'setInterval(getDWDOpenDataWeblink, ' . $refreshRate . '000);';
+    $ret .=   '$(window).on("focus", getDWDOpenDataWeblink);';    
+    $ret .= '}); ';
+    $ret .= '</script> ';
+    $ret .= '<div>';
+    $ret .=   GetForecastCssH();
+    $ret .=   '<div id="DWD_OpenData_Weblink"/>';
+    $ret .= '</div>';
+  } else {
+    # embed directly
+    my $ioDev = ::AttrVal($name, 'IODev', undef);
+    my $days = ::AttrVal($name, 'forecastDays', 4);
+    my $useGroundTemperature = ::AttrVal($name, 'useGroundTemperature', 0);
+    my $theme = ::AttrVal($name, 'theme', undef) eq 'dark'? THEME_DARK : THEME_LIGHT;
+    $ret .= '<div>';
+    $ret .=   GetForecastCssH();
+    $ret .=   GetForecastHtmlH($ioDev, $days, $useGroundTemperature, $theme);
+    $ret .= '</div>';
+  }
 
   return $ret;
 }
@@ -1151,6 +1298,11 @@ if this file is renamed to F<99_DWD_OpenData_Weblink.pm>.
 
 sub DWD_OpenData_Weblink_Initialize($) {
   my ($hash) = @_;
+
+  $hash->{DefFn} = 'DWD_OpenData_Weblink::Define';
+  $hash->{GetFn} = 'DWD_OpenData_Weblink::Get';
+
+  $hash->{AttrList} = 'IODev forecastDays:1,2,3,4,5,6,7 useGroundTemperature:0,1 refreshRate theme:light,dark';
 }
 
 1;
@@ -1159,7 +1311,9 @@ sub DWD_OpenData_Weblink_Initialize($) {
 #
 # CHANGES
 #
-# 2018-07-22  coding:  split off data preparation from HTML generation into function PrepareData
+# 2018-07-29  feature: auto-update without reloading page
+#
+# 2018-07-22  coding:  split off data preparation from HTML generation into function PrepareForecastData
 #
 # 2018-07-21  feature: precipitation display at 1st icon refined to display precipitation up to time at 2nd icon
 #
@@ -1216,17 +1370,34 @@ sub DWD_OpenData_Weblink_Initialize($) {
 #
 # -----------------------------------------------------------------------------
 
+=head1 FHEM COMMANDREF METADATA
+
+=over
+
+=item helper
+
+=item summary web presentation of DWD Open Data weather forecast with alerts
+
+=item summary_DE Web-Darstellung der DWD Open Data Wettervorhersage mit Wetterwarnungen
+
+=back
+
 =head1 INSTALLATION AND CONFIGURATION
 
 =begin html
 
-<a name="DWD_OpenDatautils"></a>
+<a name="DWD_OpenData_Weblink"></a>
 <h3>DWD_Opendata Weblink</h3>
+<ul>
+    The DWD_OpenData_Weblink helper module prepares the forecast and alert data of the DWD_OpenData module to be presented in a web frontend.
+    
+    Calling the Perl function <a href="#AsHtmlH($)">DWD_OpenData_Weblink::AsHtmlH</a> will create a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
+   
 <ul>
     The function <a href="#AsHtmlH($;$$)">DWD_OpenData_Weblink::AsHtmlH</a> returns the HTML code for a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
 
     For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. <br><br>
-    
+
     For the 1st day the data shown depends on the current time. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used instead of the min/max values. The precipitation shown is for 12 hours up to the time of the 2nd icon. If the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
 
     The function requires the name of a DWD_OpenData device as 1st parameter and accepts two optional parameters to limit the number of days to display (1...7, default 4) and to use minimum of ground temperature and minimum air temperature instead of the minimum air temperature (0/1, default 0). <br><br>
