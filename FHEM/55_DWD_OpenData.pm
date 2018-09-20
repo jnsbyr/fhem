@@ -1649,9 +1649,9 @@ sub DWD_OpenData_Initialize($) {
 
 =item device
 
-=item summary DWD Open Data weather forecast
+=item summary DWD Open Data weather alerts and forecast
 
-=item summary_DE DWD Open Data Wettervorhersage
+=item summary_DE DWD Open Data Wetterwarnungen und Wettervorhersage
 
 =back
 
