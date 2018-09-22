@@ -90,7 +90,7 @@ Informations on the installation and configuration can be found in the in-line d
 - add-on module
 
 #### File
-- [DWD_OpenData_Weblink.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/DWD_OpenData_Weblink.pm)
+- [99_DWD_OpenData_Weblink.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/99_DWD_OpenData_Weblink.pm)
 
 
 ## Copyright and License ##
