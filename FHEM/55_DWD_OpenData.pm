@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 16745 2018-07-04 19:25:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 16745 2018-09-22 13:55:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -68,11 +68,23 @@ our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
 
-my @dayProperties = ( 'Tx', 'Tn', 'Tg', 'Tm', 'ev', 'SS24' );
+my %forecastPropertyAliases = ( 'TX' => 'Tx', 'TN' => 'Tn', 'TG' => 'Tg', 'TM' => 'Tm' );
 
-my @hourProperties = ( 'TT', 'Td', 'RR6', 'RRp6', 'RR12', 'RRp12', 'RR24', 'RRp24',
-                       'ww', 'Nf', 'NL', 'NM', 'NH', 'dd', 'ff', 'fx', 'VV', 'PPPP' );
-                       
+my %forecastPropertyPeriods = (
+                               'DD' => 1, 'DRR1' => 1, 'E_DD' => 1, 'E_FF' => 1, 'E_PPP' => 1, 'E_TTT' => 1, 'E_Td' => 1, 'FF' => 1, 'FX1' => 1, 'FX3' => 1, 'N' => 1, 'N05' => 1, 'Neff' => 1, 'Nh' => 1, 'Nl' => 1, 'Nlm' => 1, 'Nm' => 1, 'PPPP' => 1, 'R101' => 1, 'R102' => 1, 'R103' => 1, 'R105' => 1, 'R107' => 1, 'R110' => 1, 'R120' => 1, 'R130' => 1, 'R150' => 1, 'RR1c' => 1, 'RR1o1' => 1, 'RR1u1' => 1, 'RR1w1' => 1, 'RR3c' => 1, 'RR6c' => 1, 'RRL1c' => 1, 'RRS1c' => 1, 'RRS3c' => 1, 'RRad1' => 1, 'Rad1h' => 1, 'RRhc' => 1, 'Rh00' => 1, 'SunD1' => 1, 'SunD3' => 1, 'T5cm' => 1, 'TTT' => 1, 'Td' => 1, 'VV' => 1, 'VV10' => 1, 'WPc11' => 1, 'WPc31' => 1, 'WPc61' => 1, 'time' => 1, 'ww' => 1, 'ww3' => 1, 'wwC' => 1, 'wwC6' => 1, 'wwD' => 1, 'wwD6' => 1, 'wwF' => 1, 'wwF6' => 1, 'wwL' => 1, 'wwL6' => 1, 'wwM' => 1, 'wwM6' => 1, 'wwP' => 1, 'wwP6' => 1, 'wwS' => 1, 'wwS6' => 1, 'wwT' => 1, 'wwT6' => 1, 'wwZ' => 1, 'wwZ6' => 1,
+                               'PEvap' => 24, 'PSd00' => 24, 'PSd30' => 24, 'PSd60' => 24, 'RRdc' => 24, 'RSunD' => 24, 'Rd00' => 24, 'Rd02' => 24, 'Rd10' => 24, 'Rd50' => 24, 'SunD' => 24, 'Tg' => 24, 'Tm' => 24, 'Tn' => 24, 'Tx' => 24
+                              );
+
+my %forecastDefaultProperties = (
+                                 'Tg' => 1, 'Tn' => 1, 'Tx' => 1, 'DD' => 1, 'FX1' => 1, 'Neff' => 1, 'RR6c' => 1, 'RRhc' => 1, 'Rh00' => 1, 'TTT' => 1, 'ww' => 1
+                                );
+
+# 1 = temperature in K, 2 = integer value, 3 = speed in m/s
+my %forecastPropertyTypes = ( 'Tx' => 1, 'Tn' => 1,  'Tg' => 1,    'Tm' => 1,    'Td' => 1,    'T5cm' => 1,  'TTT' => 1,
+                              'ww' => 2, 'ww3' => 2, 'WPc11' => 2, 'WPc31' => 2, 'WPc61' => 2, 'WPch1' => 2, 'WPcd1' => 2,
+                              'FF' => 3, 'FX1' => 3, 'FX3' => 3 );
+
+
 my @wwdText = ('Bewölkungsentwicklung nicht beobachtet',
                'Bewölkung abnehmend',
                'Bewölkung unverändert',
@@ -687,6 +699,24 @@ sub ParseCAPTime($) {
   return Time::Piece->strptime($s, '%Y-%m-%dT%H:%M:%S%z')->epoch;
 }
 
+=head2 ParseKMLTime($)
+
+=over
+
+=item * param s: time string with format "YYYY-MM-DDThh:mm:ss.000Z"
+
+=item * return epoch seconds
+
+=back
+
+=cut
+
+sub ParseKMLTime($) {
+  my ($s) = @_;
+  $s =~ s|(.+)\.000Z|$1|; # remove milliseconds and timezone
+  return Time::Piece->strptime($s, '%Y-%m-%dT%H:%M:%S')->epoch;
+}
+
 =head2 IsCommuneUnionWarncellId($)
 
 =over
@@ -754,18 +784,25 @@ sub RotateForecast($$;$)
       if ($daysForward < $daysAvailable) {
         # shift readings forward by days
         my @shiftProperties = ( 'date' );
+=pod
+        # @TODO replace dayProperties
         foreach my $property (@dayProperties) {
           push(@shiftProperties, $property);
         }
+=cut
+        # @TODO replace literal 7
         for (my $s=0; $s<7; $s++) {
           push(@shiftProperties, $s.'_time');
           push(@shiftProperties, $s.'_wwd');
         }
+=pod
+        # @TODO replace literal 7 and hourProperties
         foreach my $property (@hourProperties) {
           for (my $s=0; $s<7; $s++) {
             push(@shiftProperties, $s.'_'.$property);
           }
         }
+=cut
         for (my $d=0; $d<($daysAvailable - $daysForward); $d++) {
           my $sourcePrefix = 'fc'.($daysForward + $d).'_';
           my $destinationPrefix = 'fc'.$d.'_';
@@ -814,33 +851,19 @@ sub GetForecast($$)
   my $name = $hash->{NAME};
 
   if (!::IsDisabled($name)) {
-    # test perl module Text::CSV_XS
+    # test if XML module is available
     eval {
-      require Text::CSV_XS; # 0.40 or higher required
-      Text::CSV_XS->new();
+      require XML::LibXML;
     };
     if ($@) {
-      my $message = "$name: Perl module Text::CSV_XS not found, see commandref for details how to fix";
-      return $message;
+      return "$name: Perl module XML::LibXML not found, see commandref for details how to fix";
     }
-    my $textCsvXsVersion = $Text::CSV_XS::VERSION;
-    if ($textCsvXsVersion < 0.40) {
-      my $message = "$name: Perl module Text::CSV_XS has incompatible version $textCsvXsVersion, see commandref for details how to fix";
-      return $message;
-    }
-
-    # station name must be 5 chars, extend
-    my $fileName = $station;
-    while (length($fileName) < 5) {
-      $fileName .= '_';
-    }
-    $fileName .= '-MOSMIX.csv';
 
     # @TODO move RotateForecast
 
     # get forecast for station from DWD server
     ::readingsSingleUpdate($hash, 'state', 'fetching', 0);
-    my $url = 'https://opendata.dwd.de/weather/local_forecasts/poi/' . $fileName;
+    my $url = 'https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/' . $station . '/kml/MOSMIX_L_LATEST_' . $station . '.kmz ';
     my $param = {
                   url        => $url,
                   method     => "GET",
@@ -890,7 +913,7 @@ sub ProcessForecast($$$)
   my $time = time();
   my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = Localtime($hash, $time);
   my $today = Timelocal($hash, 0, 0, 0, $tMday, $tMon, $tYear);
-  my $daysAvailable = RotateForecast($hash, $station, $today);
+  my $daysAvailable = 0; #RotateForecast($hash, $station, $today);
 
   my $relativeDay = 0;
   eval {
@@ -904,133 +927,183 @@ sub ProcessForecast($$$)
       die "no data retrieved from URL '$url'";
     }
 
-    #::Log3 $name, 5, "$name: ProcessForecast: $code >$fileContent<";
-
-    # create memory mapped file form received data and parse as CSV
-    ::readingsBulkUpdate($hash, 'state', 'parsing', 0);
-    my $csv = Text::CSV_XS->new({ sep_char => ';' });
-    if (!defined($csv)) {
-      die "error creating CSV parser: ".Text::CSV_XS->error_diag();
-    }
-    open my $fileHandle, '<', \$fileContent;
-
-    # parse file content
-    my @columnNames = @{$csv->getline($fileHandle)};
-    if (!@columnNames) {
-      die "error parsing header line";
-    }
-
-    #foreach my $columnName (@columnNames) {
-    #  ::Log3 $name, 5, "$name: ProcessForecast cn: $columnName";
-    #}
-
-    $csv->column_names(@columnNames);
-    my @aoh;
-    while (my $row = $csv->getline_hr($fileHandle)) {
-      #::Log3 $name, 5, "$name: ProcessForecast r: $row";
-      push(@aoh, $row);
-    }
-
-    # abort if no data
-    if (scalar(@aoh) == 0) {
-      die "file does not contain valid data";
-    }
+    ::Log3 $name, 5, "$name: ProcessForecast: data received";
 
     # prepare processing
     ::readingsBulkUpdate($hash, 'state', 'processing');
     my $forecastWW2Text = ::AttrVal($name, 'forecastWW2Text', 0);
-    my $forecastDays = ::AttrVal($name, 'forecastDays', 14);
+    my $forecastDays = ::AttrVal($name, 'forecastDays', 10);
     my $forecastResolution = ::AttrVal($name, 'forecastResolution', 6);
     my $forecastProperties = ::AttrVal($name, 'forecastProperties', undef);
     my @properties = split(',', $forecastProperties) if (defined($forecastProperties));
-    my @selectedDayProperties;
-    my @selectedHourProperties;
+    my %selectedProperties;
     if (!@properties) {
-      # no selection: default to all properties
-      @selectedDayProperties = @dayProperties;
-      @selectedHourProperties = @hourProperties;
+      # no selection: use defaults
+      %selectedProperties = %forecastDefaultProperties;
     } else {
-      # split selected properties in day and hour properties
+      # use selected properties
       foreach my $property (@properties) {
-        if (grep(/^$property$/, @dayProperties)) {
-          push(@selectedDayProperties, $property);
-        } else {
-          push(@selectedHourProperties, $property);
-        }
+        $property =~ s/^\s+|\s+$//g; # trim
+        $selectedProperties{$property} = 1;
       }
     }
 
-    ::readingsBulkUpdate($hash, "fc_station", $station);
-    ::readingsBulkUpdate($hash, "fc_copyright", "Datenbasis: Deutscher Wetterdienst");
+    # create memory mapped file from received data and unzip
+    open my $zipFileHandle, '<', \$fileContent;
+    my @xmlStrings;
+    unzip($zipFileHandle => \@xmlStrings, MultiStream => 1) or die "unzip failed: $UnzipError\n";
 
-    # process received data: row 0 holds physical units, row 1 holds comment, row 2 hold first data
-    my $rowIndex = 0;
-    my $reportHour;
-    foreach my $row (@aoh)
-    {
-      if ($rowIndex == 0) {
-        # 1st column of row 0 holds the hour and timezone the report was created
-        $reportHour = (split(' ', $row->{forecast}, 2))[1];
-        $reportHour =~ s/UTC/GMT/g;
+    ::readingsBulkUpdate($hash, "fc_station", $station);
+
+    # parse XML strings (files from zip)
+    foreach my $xmlString (@xmlStrings) {
+      if (substr(${$xmlString}, 0, 2) eq 'PK') {
+        # empty string, skip
+        next;
       }
-      elsif ($rowIndex >= 2) {
-        if ($rowIndex == 2) {
-          #my $reportTime = Time::Piece->strptime($row->{forecast}.' '.$reportHour, '%d.%m.%y %H %Z');
-          #::readingsBulkUpdate($hash, "fc_time", FormatDateTimeLocal($hash, $reportTime->epoch));
-          ::readingsBulkUpdate($hash, "fc_time", FormatDateTimeLocal($hash, $time));
-        }
-        # analyse date relation between forecast and today
-        my $forecastTime = Time::Piece->strptime($row->{forecast}.' '.$row->{parameter}.' GMT', '%d.%m.%y %H:%M %Z');
-        my ($fcSec, $fcMin, $fcHour, $fcMday, $fcMon, $fcYear, $fcWday, $fcYday, $fcIsdst) = Localtime($hash, $forecastTime->epoch);
-        my $forecastDate = Timelocal($hash, 0, 0, 0, $fcMday, $fcMon, $fcYear);
-        my $nextRelativeDay = sprintf("%.0f", ($forecastDate - $today)/(24*60*60)); # Perl equivalent for round()
-        if ($nextRelativeDay > $forecastDays) {
-          # max. number of days processed, done
-          last;
-        }
-        if ($nextRelativeDay < 0) {
-          # forecast is older than today, skip
-          next;
-        }
-        $relativeDay = $nextRelativeDay;
-        # write data
-        my $destinationPrefix = 'fc'.$relativeDay.'_';
-        #::Log3 $name, 5, "$name: $row->{forecast} $row->{parameter} -> $forecastTime -> $fcMday.$fcMon.$fcYear $fcHour:$fcMin -> $forecastDate -> $destinationPrefix";
-        ::readingsBulkUpdate($hash, $destinationPrefix.'date', FormatDateLocal($hash, $forecastTime->epoch));
-        ::readingsBulkUpdate($hash, $destinationPrefix.'weekday', FormatWeekdayLocal($hash, $forecastTime->epoch));
-        foreach my $property (@selectedDayProperties) {
-          my $value = $row->{$property};
-          $value =~ s/^\s+|\s+$//g; # trim
-          $value = undef if ($value eq "---");
-          if (defined($value)) {
-            $value =~ s/,/./g; # decimal point
-            #::Log3 $name, 5, "$name: $property = $value";
-            ::readingsBulkUpdate($hash, $destinationPrefix.$property, $value) if (defined($value));
-          }
-        }
-        #::Log3 $name, 5, "$name: $rowIndex/$today/$row->{forecast}/$relativeDay/$row->{parameter}";
-        my $hourUTC = (split(':', $row->{parameter}))[0];
-        if ($forecastResolution == 3 || ($hourUTC eq "00" || $hourUTC eq "06" || $hourUTC eq "12" || $hourUTC eq "18")) {
-          #::Log3 $name, 5, "$name: $rowIndex/$today/$row->{forecast}/$relativeDay/$row->{parameter}/$fcHour";
-          $destinationPrefix .= int($fcHour/$forecastResolution).'_';
-          ::readingsBulkUpdate($hash, $destinationPrefix.'time', FormatTimeLocal($hash, $forecastTime->epoch));
-          foreach my $property (@selectedHourProperties) {
-            my $label = $property;
-            $label =~ s/^RRp/RR%/g;
-            my $value = $row->{$label};
-            $value =~ s/^\s+|\s+$//g; # trim
-            $value = undef if (defined($value) && ($value eq "---"));
-            if (defined($value)) {
-              $value =~ s/,/./g; # decimal point
-              ::readingsBulkUpdate($hash, $destinationPrefix.$property, $value);
-              if ($forecastWW2Text && ($property eq 'ww') && length($value) > 0) {
-                ::readingsBulkUpdate($hash, $destinationPrefix.'wwd', $wwdText[$value]);
+
+      # parse XML string
+      ::Log3 $name, 5, "$name: ProcessForecast: parsing XML document";
+      my $dom = XML::LibXML->load_xml(string => $xmlString);
+      if (!$dom) {
+        die "parsing XML failed";
+      }
+
+      ::Log3 $name, 5, "$name: ProcessForecast: extracting data";
+
+      # extract header
+      my @timestamps;
+      my $defaultUndefSign = '-';
+      my $productDefinitionNodeList = $dom->getElementsByLocalName('ProductDefinition');
+      if ($productDefinitionNodeList->size()) {
+        my $productDefinitionNode = $productDefinitionNodeList->get_node(1);
+        foreach my $productDefinitionChildNode ($productDefinitionNode->nonBlankChildNodes()) {
+          if ($productDefinitionChildNode->nodeName() eq 'dwd:Issuer') {
+            my $issuer = $productDefinitionChildNode->textContent();
+            ::readingsBulkUpdate($hash, "fc_copyright", "Datenbasis: $issuer");
+          } elsif ($productDefinitionChildNode->nodeName() eq 'dwd:IssueTime') {
+            my $issueTime = $productDefinitionChildNode->textContent();
+            # ignore issue time, use now
+            ::readingsBulkUpdate($hash, "fc_time", FormatDateTimeLocal($hash, $time));
+          } elsif ($productDefinitionChildNode->nodeName() eq 'dwd:ForecastTimeSteps') {
+            foreach my $forecastTimeStepsChildNode ($productDefinitionChildNode->nonBlankChildNodes()) {
+              if ($forecastTimeStepsChildNode->nodeName() eq 'dwd:TimeStep') {
+                my $forecastTimeSteps = $forecastTimeStepsChildNode->textContent();
+                push(@timestamps, ParseKMLTime($forecastTimeSteps));
+              }
+            }
+          } elsif ($productDefinitionChildNode->nodeName() eq 'dwd:FormatCfg') {
+            foreach my $formatCfgChildNode ($productDefinitionChildNode->nonBlankChildNodes()) {
+              if ($formatCfgChildNode->nodeName() eq 'dwd:DefaultUndefSign') {
+                $defaultUndefSign = $formatCfgChildNode->textContent();
               }
             }
           }
         }
       }
-      $rowIndex++;
+
+      # extract data
+      my %properties;
+      my $placemarkNodeList = $dom->getElementsByLocalName('Placemark');
+      if ($placemarkNodeList->size()) {
+        my $placemarkNode = $placemarkNodeList->get_node(1);
+        foreach my $placemarkChildNode ($placemarkNode->nonBlankChildNodes()) {
+          if ($placemarkChildNode->nodeName() eq 'kml:description') {
+            my $description = $placemarkChildNode->textContent();
+            ::readingsBulkUpdate($hash, "fc_description", encode('UTF-8', $description));
+          } elsif ($placemarkChildNode->nodeName() eq 'kml:ExtendedData') {
+            foreach my $extendedDataChildNode ($placemarkChildNode->nonBlankChildNodes()) {
+              if ($extendedDataChildNode->nodeName() eq 'dwd:Forecast') {
+                my $elementName = $extendedDataChildNode->getAttribute('dwd:elementName');
+                # convert some elements names for backward compatibility
+                my $alias = $forecastPropertyAliases{$elementName};
+                if (defined($alias)) { $elementName = $alias };
+                my $textContent = $extendedDataChildNode->nonBlankChildNodes()->get_node(1)->textContent();
+                $textContent =~ s/^\s+|\s+$//g; # trim outside
+                $textContent =~ s/\s+/ /g; # trim inside
+                my @values = split(' ',$textContent);
+                $properties{$elementName} = \@values;
+              }
+            }
+          } elsif ($placemarkChildNode->nodeName() eq 'kml:Point') {
+            my $coordinates = $placemarkChildNode->nonBlankChildNodes()->get_node(1)->textContent();
+            ::readingsBulkUpdate($hash, "fc_coordinates", $coordinates);
+          }
+        }
+      }
+
+      ::Log3 $name, 5, "$name: ProcessForecast: creating readings";
+
+      # create readings
+      my $lastDayPrefix = '';
+      for my $i (0 .. $#timestamps) {
+        # analyse date relation between forecast and today
+        my $forecastTime = $timestamps[$i];
+        my ($fcSec, $fcMin, $fcHour, $fcMday, $fcMon, $fcYear, $fcWday, $fcYday, $fcIsdst) = Localtime($hash, $forecastTime);
+        my $forecastDate = Timelocal($hash, 0, 0, 0, $fcMday, $fcMon, $fcYear);
+        my $relativeDay = sprintf("%.0f", ($forecastDate - $today)/(24*60*60)); # Perl equivalent for round()
+        if ($relativeDay > $forecastDays) {
+          # max. number of days processed, done
+          last;
+        }
+        if ($relativeDay < 0) {
+          # forecast is older than today, skip
+          next;
+        }
+        # write data
+        my $dayPrefix = 'fc'.$relativeDay.'_';
+        if ($dayPrefix ne $lastDayPrefix) {
+          ::readingsBulkUpdate($hash, $dayPrefix.'date', FormatDateLocal($hash, $forecastTime));
+          ::readingsBulkUpdate($hash, $dayPrefix.'weekday', FormatWeekdayLocal($hash, $forecastTime));
+          $lastDayPrefix = $dayPrefix;
+        }
+        # some values are only available every 3, 6 or 12 hours relative to 00:00 UTC
+        my $hourPrefix = undef;
+        my $fcHourUTC = (gmtime($forecastTime))[2];
+        #::Log3 $name, 5, "$name: fcHourUTC $fcHourUTC";
+        if ($fcHourUTC%$forecastResolution == 0) {
+          $hourPrefix = int($fcHour/$forecastResolution).'_';
+          #::Log3 $name, 5, "$name: hourPrefix $hourPrefix";
+          ::readingsBulkUpdate($hash, $dayPrefix.$hourPrefix.'time', FormatTimeLocal($hash, $forecastTime));
+        }
+        while (my($property, $values) = each %properties) {
+          #::Log3 $name, 5, "$name: $property  vs=" . scalar(@$values) . " ts=" . $#timestamps . " -> " . $values->[$i];
+          #if (IsForecastDayProperty($property) && scalar(@$values) >= $#timestamps && ) {
+          my $selectedProperty = $selectedProperties{$property};
+          if (defined($selectedProperty) && defined($values->[$i])) {
+            my $forecastPropertyPeriod = $forecastPropertyPeriods{$property};
+            my $forecastPropertyType = $forecastPropertyTypes{$property};
+            my $value = $values->[$i];
+            if ($value ne $defaultUndefSign) {
+              $value =~ s/,/./g; # decimal point
+              if ($forecastPropertyType == 1) {
+                $value -= 273.15; # K -> °C
+                if (length($value) > 6) {
+                  $value = sprintf('%0.2f', $value); # round to compensate floating point granularity
+                }
+              }
+              elsif ($forecastPropertyType == 2) {
+                $value = sprintf('%0.0f', $value); # round to integer
+                if ($forecastWW2Text && ($property eq 'ww') && length($value) > 0) {
+                  ::readingsBulkUpdate($hash, $dayPrefix.$hourPrefix.'wwd', $wwdText[$value]);
+                }
+              }
+              elsif ($forecastPropertyType == 3) {
+                $value *= 3.6; # m/s -> km/h
+                $value = sprintf('%0.0f', $value); # round to integer
+              }
+              #::Log3 $name, 5, "$name: $dayPrefix $hourPrefix | $property -> $value | $forecastPropertyType";
+              if ($forecastPropertyPeriod == 24) {
+                # day property
+                ::readingsBulkUpdate($hash, $dayPrefix.$property, $value);
+              } elsif (defined($hourPrefix)) {
+                # hour property
+                ::readingsBulkUpdate($hash, $dayPrefix.$hourPrefix.$property, $value);
+              }
+            }
+          }
+        }
+      }
     }
   };
 
@@ -1221,7 +1294,7 @@ sub ProcessAlerts($$$)
         # empty string, skip
         next;
       }
-      # parse XML strings
+      # parse XML string
       ::Log3 $name, 5, "$name: ProcessAlerts: parsing XML document";
       my $dom = XML::LibXML->load_xml(string => $xmlString);
       if (!$dom) {
@@ -1581,8 +1654,7 @@ sub DWD_OpenData_Initialize($) {
   $hash->{GetFn}      = 'DWD_OpenData::Get';
 
   $hash->{AttrList} = 'disable:0,1 '
-                      .'forecastStation forecastDays forecastResolution:3,6 forecastWW2Text:0,1 '
-                      .'forecastProperties:uzsuSelect,Tx,Tn,Tm,Tg,TT,Td,dd,ff,fx,RR6,RRp6,RR12,RRp12,RR24,RRp24,ev,ww,VV,Nf,NL,NM,NH,SS24,PPPP '
+                      .'forecastStation forecastDays forecastProperties forecastResolution:3,6 forecastWW2Text:0,1 '
                       .'alertArea alertLanguage:DE,EN '
                       .'timezone '
                       .$readingFnAttributes;
@@ -1595,6 +1667,9 @@ sub DWD_OpenData_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 20.09.2018 jensb
+# feature: CSV based forecast replaced by KML based forecast
 #
 # 04.07.2018 jensb
 # bugfix: mark strptime as non package function in ParseDateTimeLocal and ParseDateLocal
@@ -1667,7 +1742,7 @@ sub DWD_OpenData_Initialize($) {
   This modules provides two elements of the available data:
   <ul> <br>
       <li>weather forecasts:
-          <a href="https://opendata.dwd.de/weather/local_forecasts/poi/">Individual stations of local forecasts of WMO, national and interpolated stations (MOSMIX)</a>. The stations are worldwide POIs and the German DWD network. This data is updated by the DWD typically every 12 hours. <br><br>
+          <a href="https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/">Total lists of local forecasts of WMO, national and interpolated stations, all variables, 3, 9, 15, 21 UTC</a>. More than 70 properties are available for worldwide POIs and the German DWD network. This data is updated by the DWD typically every 6 hours.<br><br>
 
           You can request forecasts for different stations in sequence using the command <code>get forecast &lt;station code&gt;</code> or for one station continuously using the attribute <code>forecastStation</code>. To get continuous mode for more than one station you need to create separate DWD_OpenData devices. <br><br>
 
@@ -1686,8 +1761,6 @@ sub DWD_OpenData_Initialize($) {
   Installation notes: <br><br>
 
   <ul>
-      <li>This module requires the additional Perl module <code>Text::CSV_XS (0.40 or higher)</code> for weather forecasts. It can be installed depending on your OS and your preferences (e.g. <code>sudo apt-get install libtext-csv-xs-perl</code> or using CPAN). </li><br>
-
       <li>This module requires the additional Perl module <code>XML::LibXML</code> for weather alerts. It can be installed depending on your OS and your preferences (e.g. <code>sudo apt-get install libxml-libxml-perl</code> or using CPAN). </li><br>
 
       <li>Data is fetched from the DWD Open Data Server using the FHEM module HttpUtils. If you use a proxy for internet access you need to set the global attribute <code>proxy</code> to a suitable value in the format <code>myProxyHost:myProxyPort</code>. </li><br>
@@ -1702,6 +1775,8 @@ sub DWD_OpenData_Initialize($) {
       <li>Like some other Perl modules this module temporarily modifies the TZ environment variable for timezone conversions. This may cause unexpected results in multi threaded environments. </li><br>
 
       <li>The forecast reading names do not contain absolute days or hours to keep them independent of summertime adjustments. Forecast days are counted relative to "today" of the timezone defined by the attribute of the same name or the timezone specified by the Perl TZ environment variable if undefined. </li><br>
+
+      <li>Starting on 17.09.2018 the forecast data is no longer available in CSV format and is based on the KML format instead. While most of the properties of the CSV format are still available in KML format, their names have changed and you will have to adjust your existing installation accordingly. </li><br>
   </ul><br>
 
   <a name="DWD_OpenDatadefine"></a>
@@ -1755,9 +1830,10 @@ sub DWD_OpenData_Initialize($) {
       <li>forecastResolution {3|6}, default: 6 h<br>
           Time resolution (number of hours between 2 samples).
       </li><br>
-      <li>forecastProperties [&lt;p1&gt;[,&lt;p2&gt;]...] , default: none<br>
-          If defined limits the number of properties to the given list. If you remove a property from the list existing readings must be deleted manually in continuous mode. <br>
-          Note: Not all selectable properties are available for all stations and for all hours.
+      <li>forecastProperties [&lt;p1&gt;[,&lt;p2&gt;]...] , default: Tx, Tn, Tg, TTT, DD, FX1, Neff, RR6c, RRhc, Rh00, ww<br>
+          A list of the properties available can be found <a href="https://opendata.dwd.de/weather/lib/MetElementDefinition.xml">here</a>.
+          If you remove a property from the list existing readings must be deleted manually in continuous mode.<br>
+          Note: Not all properties are available for all stations and for all hours.
       </li><br>
       <li>forecastWW2Text {0|1}, default: 0<br>
           Create additional wwd readings containing the weather code as a descriptive text in German language.
@@ -1783,6 +1859,8 @@ sub DWD_OpenData_Initialize($) {
 
   <code>fc&lt;day&gt;_[&lt;sample&gt;_]&lt;property&gt;</code> <br><br>
 
+  A description of the more than 70 properties available and their units of measurement can be found <a href="https://opendata.dwd.de/weather/lib/MetElementDefinition.xml">here</a>. The units of measurement for temperatures and wind speeds are converted to °C and km/h respectively. Only a few choice properties are listed in the following paragraphs:
+
   <ul>
       <li>day    - relative day (0 .. 7) based on the timezone attribute where 0 is today</li><br>
 
@@ -1796,33 +1874,31 @@ sub DWD_OpenData_Initialize($) {
              <li>Tx [°C]    - maximum temperature of previous 24 hours (typically for 18:00 station time)</li>
              <li>Tm [°C]    - average temperature of previous 24 hours</li>
              <li>Tg [°C]    - minimum temperature 5 cm above ground of previous 24 hours</li>
-             <li>ev [kg/m2] - evapotranspiration of previous 24 hours</li>
-             <li>SS24 [h]   - total sunshine duration of previous 24 hours</li>
           </ul>
       </li><br>
 
       <li>hour properties
           <ul>
-             <li>time       - hour based the timezone attribute</li>
-             <li>TT [°C]    - dry bulb temperature at 2 meter above ground</li>
-             <li>Td [°C]    - dew point temperature at 2 meter above ground</li>
-             <li>dd [°]     - average wind direction 10 m above ground</li>
-             <li>ff [km/h]  - average wind speed 10 m above ground</li>
-             <li>fx [km/h]  - maximum wind speed in the last hour</li>
-             <li>RR6 [mm]   - precipitation amount in the last 6 hours</li>
-             <li>RRp6 [%]   - probability of rain in the last 6 hours</li>
-             <li>RR12 [mm]  - precipitation amount in the last 12 hours</li>
-             <li>RRp12 [%]  - probability of rain in the last 12 hours</li>
-             <li>RR24 [mm]  - precipitation amount in the last 24 hours</li>
-             <li>RRp24 [%]  - probability of rain in the last 24 hours</li>
-             <li>ww         - weather code (see WMO 4680/4677, SYNOP)</li>
-             <li>wwd        - German weather code description</li>
-             <li>VV [m]     - horizontal visibility</li>
-             <li>Nf [1/8]   - effective cloud cover</li>
-             <li>NL [1/8]   - lower level cloud cover</li>
-             <li>NM [1/8]   - medium level cloud cover</li>
-             <li>NH [1/8]   - high level cloud cover</li>
-             <li>PPPP [hPa] - pressure equivalent at sea level</li>
+             <li>time         - hour based the timezone attribute</li>
+             <li>TTT [°C]     - dry bulb temperature at 2 meter above ground</li>
+             <li>Td [°C]      - dew point temperature at 2 meter above ground</li>
+             <li>DD [°]       - average wind direction 10 m above ground</li>
+             <li>FF [km/h]    - average wind speed 10 m above ground</li>
+             <li>FX1 [km/h]   - maximum wind speed in the last hour</li>
+             <li>RR6c [kg/m2] - precipitation amount in the last 6 hours</li>
+             <li>R600 [%]     - probability of rain in the last 6 hours</li>
+             <li>RRhc [kg/m2] - precipitation amount in the last 12 hours</li>
+             <li>Rh00 [%]     - probability of rain in the last 12 hours</li>
+             <li>RRdc [kg/m2] - precipitation amount in the last 24 hours</li>
+             <li>Rd00 [%]     - probability of rain in the last 24 hours</li>
+             <li>ww           - weather code (see WMO 4680/4677, SYNOP)</li>
+             <li>wwd          - German weather code description</li>
+             <li>VV [m]       - horizontal visibility</li>
+             <li>Neff [1/8]   - effective cloud cover</li>
+             <li>Nl [1/8]     - lower level cloud cover</li>
+             <li>Nm [1/8]     - medium level cloud cover</li>
+             <li>Nh [1/8]     - high level cloud cover</li>
+             <li>PPPP [Pa]    - pressure equivalent at sea level</li>
           </ul>
       </li>
   </ul> <br>
@@ -1830,9 +1906,11 @@ sub DWD_OpenData_Initialize($) {
   Additionally there are global forecast readings:
   <ul>
     <ul>
-      <li>fc_station   - forecast station code (WMO or DWD)</li>
-      <li>fc_time      - time the forecast updated was downloaded based on the timezone attribute</li>
-      <li>fc_copyright - legal information, must be displayed with forecast data, see DWD usage conditions</li>
+      <li>fc_station     - forecast station code (WMO or DWD)</li>
+      <li>fc_description - station description</li>
+      <li>fc_coordinates - world coordinat and height of station</li>
+      <li>fc_time        - time the forecast updated was downloaded based on the timezone attribute</li>
+      <li>fc_copyright   - legal information, must be displayed with forecast data, see DWD usage conditions</li>
     </ul>
   </ul> <br><br>
 
