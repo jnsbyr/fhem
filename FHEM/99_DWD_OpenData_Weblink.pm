@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201303 2018-09-03 18:15:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201303 2018-09-22 13:55:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -55,7 +55,7 @@ use constant TEMP_WARM    => 25; # > orange
 use constant PRECIP_RAIN  => 50; # > blue
 
 use constant THEME_LIGHT  => 0; # default
-use constant THEME_DARK   => 1; 
+use constant THEME_DARK   => 1;
 
 use constant COLOR_FREEZE => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 use constant COLOR_WARM   => [ "orange", "orange" ];
@@ -322,7 +322,7 @@ sub Define($$)
   my $name = $hash->{NAME};
 
   ::readingsSingleUpdate($hash, 'state', 'initialized', 1);
-  
+
   return undef;
 }
 
@@ -859,7 +859,7 @@ sub PrepareForecastData($$$$) {
     }
 
     # weather icon
-    my $cloudCover = ::ReadingsVal($d, $hourPrefix."_Nf", undef);
+    my $cloudCover = ::ReadingsVal($d, $hourPrefix."_Neff", undef);
     $entry->{iconImageTag} = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), $cloudCover, $epoch);
 
     # weather alert key
@@ -868,7 +868,7 @@ sub PrepareForecastData($$$$) {
     # temperature
     if ($i <= 0) {
       # 1st day
-      $entry->{tempValue} = ::ReadingsVal($d, $hourPrefix."_TT", "?");
+      $entry->{tempValue} = ::ReadingsVal($d, $hourPrefix."_TTT", "?");
       $entry->{tempLabel} = '';
 
       # for 2nd icon
@@ -928,16 +928,16 @@ sub PrepareForecastData($$$$) {
       my ($windSpeed, $windDirection, $precipitation, $chanceOfRain);
       for (my $index = 0; $index < 24/$timeResolution; $index++) {
         my $hourPrefix = "fc".$day."_".$index;
-        my $value = ::ReadingsVal($d, $hourPrefix."_fx", undef);
+        my $value = ::ReadingsVal($d, $hourPrefix."_FX1", undef);
         if (defined($value) && (!defined($windSpeed) || $value > $windSpeed) && ($i > 0 || $now < ($epoch + 7200))) {
           # max wind speed of (remaining) day
           $windSpeed = $value;
-          $windDirection = ::ReadingsVal($d, $hourPrefix."_dd", "?");
+          $windDirection = ::ReadingsVal($d, $hourPrefix."_DD", "?");
         }
         if ($i > 0 && $index == 18/$timeResolution) {
           # precipitation between 06:00 and 18:00 for all days except 1st
-          $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");  # RR12 available every 12 hours at 06:00 and 18:00
-          $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");  # RRp12 available every 6 hours
+          $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");  # RRhc available every 12 hours at 06:00 and 18:00
+          $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");  # Rh00 available every 6 hours
         }
       }
       $entry->{windSpeed}     = $windSpeed;
@@ -957,13 +957,13 @@ sub PrepareForecastData($$$$) {
           $index = 6/$timeResolution;
         }
         my $hourPrefix = "fc".$day."_".$index;
-        $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_RRp12", "?");               # RRp12 available every 6 hours
+        $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");                # Rh00 available every 6 hours
         if ($day > 0) {
-          $precipitation = ::ReadingsVal($d, $hourPrefix."_RR12", "?");             # RR12 available every 12 hours at 06:00 and 18:00
+          $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");             # RRhc available every 12 hours at 06:00 and 18:00
         } else {
-          my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6", "?");          # RR6 available every 6 hours
+          my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6c", "?");         # RR6c available every 6 hours
           my $previousHourPrefix = "fc".$day."_".($index - 6/$timeResolution);
-          my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6", "?");  # RR6 available every 6 hours
+          my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6c", "?"); # RR6c available every 6 hours
           $precipitation = $precipitation1 eq '?' || $precipitation2 eq '?'? '?' : $precipitation1 + $precipitation2;
         }
       }
@@ -1216,7 +1216,7 @@ sub GetForecastHtmlH($$$$) {
   return $ret;
 }
 
-=head2 GetForecastH($)
+=head2 AsHtmlH($)
 
 create forecast display as a horizontal CSS table with two icons per day
 including CSS style and optional auto refresh
@@ -1252,7 +1252,7 @@ sub AsHtmlH($) {
     $ret .= '$(document).ready(function() { ';
     $ret .=   'getDWDOpenDataWeblink(); ';
     $ret .=   'setInterval(getDWDOpenDataWeblink, ' . $refreshRate . '000);';
-    $ret .=   '$(window).on("focus", getDWDOpenDataWeblink);';    
+    $ret .=   '$(window).on("focus", getDWDOpenDataWeblink);';
     $ret .= '}); ';
     $ret .= '</script> ';
     $ret .= '<div>';
@@ -1310,6 +1310,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 2018-09-22  feature: reading names modified for KML based forecast data compatibility
 #
 # 2018-07-29  feature: auto-update without reloading page
 #
@@ -1390,30 +1392,28 @@ sub DWD_OpenData_Weblink_Initialize($) {
 <h3>DWD_Opendata Weblink</h3>
 <ul>
     The DWD_OpenData_Weblink helper module prepares the forecast and alert data of the DWD_OpenData module to be presented in a web frontend.
-    
+
     Calling the Perl function <a href="#AsHtmlH($)">DWD_OpenData_Weblink::AsHtmlH</a> will create a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
-   
-<ul>
-    The function <a href="#AsHtmlH($;$$)">DWD_OpenData_Weblink::AsHtmlH</a> returns the HTML code for a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
 
     For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. <br><br>
 
     For the 1st day the data shown depends on the current time. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used instead of the min/max values. The precipitation shown is for 12 hours up to the time of the 2nd icon. If the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
 
-    The function requires the name of a DWD_OpenData device as 1st parameter and accepts two optional parameters to limit the number of days to display (1...7, default 4) and to use minimum of ground temperature and minimum air temperature instead of the minimum air temperature (0/1, default 0). <br><br>
+    The function requires the name of a DWD_OpenData device as parameter. All other settings must be done using the attributes of the device: A) the number of days to display (1...7, default 4), B) to use minimum of ground temperature and minimum air temperature instead of the minimum air temperature (0/1, default 0) or C) the auto update rate in seconds (default off).<br><br>
 
     Example: <br><br>
 
-    <code>define MyDWDWeblink weblink htmlCode { DWD_OpenData_Weblink::AsHtmlH("MyDWDDevice") }</code> <br><br>
+    <code>define MyDWDWeblinkDevice DWD_OpenData_Weblink</code> <br><br>
+    <code>attr MyDWDWeblinkDevice IODev MyDWDDevice</code> <br><br>
+    <code>attr MyDWDWeblinkDevice forecastDays 4</code> <br><br>
+    <code>attr MyDWDWeblinkDevice refreshRate 900</code> <br><br>
+    <code>define MyDWDWeblink weblink htmlCode { DWD_OpenData_Weblink::AsHtmlH("MyDWDWeblinkDevice") }</code> <br><br>
 
     where "MyDWDDevice" is the name of your DWD_OpenData device <br><br>
 
     Notes:
     <ul>
-        <li>The properties TT, Tx, Tn, Tg, dd, fx, RR6, RR12, RRp12, ww, wwd and Nf must be enabled in your DWD_OpenData device.
-        </li>
-        <li>This module must be loaded by FHEM before first use. Add <code>eval "use DWD_OpenData_Weblink;";</code>
-            e.g. to your <i>99_myUtils.pm</i>. Alternatively you can rename this file to <i>99_DWD_OpenData_Weblink.pm</i>.
+        <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, RRhc, Rh00, ww, wwd and Neff must be enabled in your DWD_OpenData device.
         </li>
         <li>The limits for temperature and precipitation colouring can be configured in lines 50 to 52.
         </li>
