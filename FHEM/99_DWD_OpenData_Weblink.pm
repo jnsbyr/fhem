@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201303 2018-09-22 13:55:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201402 2018-09-23 16:47:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -62,7 +62,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.013.003;
+our $VERSION   = 2.014.002;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -354,7 +354,7 @@ sub Get($@)
       my $ioDev = ::AttrVal($name, 'IODev', undef);
       my $days = ::AttrVal($name, 'forecastDays', 4);
       my $useGroundTemperature = ::AttrVal($name, 'useGroundTemperature', 0);
-      my $theme = ::AttrVal($name, 'theme', undef) eq 'dark'? THEME_DARK : THEME_LIGHT;
+      my $theme = ::AttrVal($name, 'theme', THEME_LIGHT) eq 'dark'? THEME_DARK : THEME_LIGHT;
       $result = GetForecastHtmlH($ioDev, $days, $useGroundTemperature, $theme);
     }
 
@@ -655,6 +655,7 @@ sub GetWeatherIconTag($$;$) {
   if (defined($weatherCode)) {
     if ($weatherCode < 4  && defined($cloudCover)) {
       # no weather activity, use cloud cover
+      $cloudCover = sprintf('%0.0f', $cloudCover); # round()
       if ($cloudCover < 3) {
         $iconName = $day? 'sunny' : 'clear';                     # 012
       } elsif ($cloudCover < 5) {
@@ -860,7 +861,7 @@ sub PrepareForecastData($$$$) {
 
     # weather icon
     my $cloudCover = ::ReadingsVal($d, $hourPrefix."_Neff", undef);
-    $entry->{iconImageTag} = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), $cloudCover, $epoch);
+    $entry->{iconImageTag} = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), 8*$cloudCover/100, $epoch);
 
     # weather alert key
     $entry->{alertKey} = $i < 0? 'NOW' : "$day-$index";
@@ -1391,41 +1392,61 @@ sub DWD_OpenData_Weblink_Initialize($) {
 <a name="DWD_OpenData_Weblink"></a>
 <h3>DWD_Opendata Weblink</h3>
 <ul>
-    The DWD_OpenData_Weblink helper module prepares the forecast and alert data of the DWD_OpenData module to be presented in a web frontend.
+  The DWD_OpenData_Weblink helper module prepares the forecast and alert data of the DWD_OpenData module to be presented in a web frontend.
 
-    Calling the Perl function <a href="#AsHtmlH($)">DWD_OpenData_Weblink::AsHtmlH</a> will create a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
+  Calling the Perl function <a href="#AsHtmlH($)">DWD_OpenData_Weblink::AsHtmlH</a> will create a horizontally arranged weather forecast with 2 icons per day, one for the morning at 06:00 UTC and one for midday at 12:00 UTC with the exception of the 1st day where the 1st icon approximately corresponds to now and the 2nd icon is 6 hours later. <br><br>
 
-    For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. <br><br>
+  For each day the minimum and maximum temperatures, the precipitation amount and precipitation probability between 06:00 and 18:00 UTC as well as the highest wind speed of the day and its direction are displayed. <br><br>
 
-    For the 1st day the data shown depends on the current time. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used instead of the min/max values. The precipitation shown is for 12 hours up to the time of the 2nd icon. If the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
+  For the 1st day the data shown depends on the current time. If the 2nd icon shows a time after 18:00 UTC the current temperature will be used instead of the min/max values. The precipitation shown is for 12 hours up to the time of the 2nd icon. If the 2nd icon shows the 2nd day the precipitation relates to the time between 18:00 and 06:00 UTC. <br><br>
 
-    The function requires the name of a DWD_OpenData device as parameter. All other settings must be done using the attributes of the device: A) the number of days to display (1...7, default 4), B) to use minimum of ground temperature and minimum air temperature instead of the minimum air temperature (0/1, default 0) or C) the auto update rate in seconds (default off).<br><br>
+  The weblink function <a href="#AsHtmlH($)">DWD_OpenData_Weblink::AsHtmlH</a> requires the name of a DWD_OpenData_Weblink device as parameter. All other settings must be done using the attributes of the device (see below).<br><br>
 
+  <a name="DWD_OpenData_Weblinkdefine"></a>
+  <b>Define</b> <br><br>
+  <ul>
     Example: <br><br>
 
-    <code>define MyDWDWeblinkDevice DWD_OpenData_Weblink</code> <br><br>
-    <code>attr MyDWDWeblinkDevice IODev MyDWDDevice</code> <br><br>
-    <code>attr MyDWDWeblinkDevice forecastDays 4</code> <br><br>
+    <code>define MyDWDWeblinkDevice DWD_OpenData_Weblink</code> <br>
+    <code>attr MyDWDWeblinkDevice IODev MyDWDDevice</code> <br>
+    <code>attr MyDWDWeblinkDevice forecastDays 4</code> <br>
     <code>attr MyDWDWeblinkDevice refreshRate 900</code> <br><br>
+    
     <code>define MyDWDWeblink weblink htmlCode { DWD_OpenData_Weblink::AsHtmlH("MyDWDWeblinkDevice") }</code> <br><br>
 
     where "MyDWDDevice" is the name of your DWD_OpenData device <br><br>
+  </ul> <br>
 
-    Notes:
-    <ul>
-        <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, RRhc, Rh00, ww, wwd and Neff must be enabled in your DWD_OpenData device.
-        </li>
-        <li>The limits for temperature and precipitation colouring can be configured in lines 50 to 52.
-        </li>
-        <li>The colours for temperature and precipitation colouring can be configured in lines 54 to 56.
-            For light background with black font keep defaults, for dark background with white font replace blue with skyblue.
-        </li>
-        <li>This module is designed for ease of use and does not require additional web resources - but because of this
-            it does not comply to best practices in respect to inline images and inline CSS script.
-        </li>
-        <li>Known issues: day/night detection will only work properly if the forecast station timezone and FHEM timezone are identical.
-        </li>
-    </ul> <br>
+  <a name="DWD_OpenData_Weblinkattr"></a>
+  <b>Attributes</b> <br><br>
+  <ul> 
+      <li>IODev &lt;DWD_OpenData device name&gt;, required, default: none<br>
+          Assign an DWD_OpenData device as data source.
+      </li><br>
+      <li>forecastDays: 1...9, default: 4<br>
+          The number of days to display.
+      </li><br>
+      <li>refreshRate &lt;seconds&gt;, default: 0<br>
+          If set to a value greater than zero will update the data periodically and on tab change (requires current Browser with JavaScript).
+      </li><br>
+      <li>useGroundTemperature {0|1}, default: 0<br>
+          If enabled use min(Tg, Tm) instead Tg.
+      </li><br>
+      <li>theme {light,dark}, default: light<br>
+          Adjust texts colors to improve readability.
+      </li><br>
+  </ul> <br>
+  
+  <b>Notes:</b> <br><br>
+  <ul>
+    <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, RRhc, Rh00, ww, wwd and Neff must be enabled in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
+    </li>
+    <li>This module is designed for ease of use and does not require additional web resources - but because of this
+        it does not comply to best practices in respect to inline images and inline CSS script.
+    </li>
+    <li>Known issues: day/night detection will only work properly if the forecast station timezone and FHEM timezone are identical.
+    </li>
+  </ul> <br>
 </ul>
 
 =end html
