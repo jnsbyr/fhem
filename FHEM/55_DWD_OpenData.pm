@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 16745 2018-09-22 13:55:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 16745 2018-09-23 11:40:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.009.002;
+our $VERSION   = 1.010.002;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -71,7 +71,7 @@ our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
 my %forecastPropertyAliases = ( 'TX' => 'Tx', 'TN' => 'Tn', 'TG' => 'Tg', 'TM' => 'Tm' );
 
 my %forecastPropertyPeriods = (
-                               'DD' => 1, 'DRR1' => 1, 'E_DD' => 1, 'E_FF' => 1, 'E_PPP' => 1, 'E_TTT' => 1, 'E_Td' => 1, 'FF' => 1, 'FX1' => 1, 'FX3' => 1, 'N' => 1, 'N05' => 1, 'Neff' => 1, 'Nh' => 1, 'Nl' => 1, 'Nlm' => 1, 'Nm' => 1, 'PPPP' => 1, 'R101' => 1, 'R102' => 1, 'R103' => 1, 'R105' => 1, 'R107' => 1, 'R110' => 1, 'R120' => 1, 'R130' => 1, 'R150' => 1, 'RR1c' => 1, 'RR1o1' => 1, 'RR1u1' => 1, 'RR1w1' => 1, 'RR3c' => 1, 'RR6c' => 1, 'RRL1c' => 1, 'RRS1c' => 1, 'RRS3c' => 1, 'RRad1' => 1, 'Rad1h' => 1, 'RRhc' => 1, 'Rh00' => 1, 'SunD1' => 1, 'SunD3' => 1, 'T5cm' => 1, 'TTT' => 1, 'Td' => 1, 'VV' => 1, 'VV10' => 1, 'WPc11' => 1, 'WPc31' => 1, 'WPc61' => 1, 'time' => 1, 'ww' => 1, 'ww3' => 1, 'wwC' => 1, 'wwC6' => 1, 'wwD' => 1, 'wwD6' => 1, 'wwF' => 1, 'wwF6' => 1, 'wwL' => 1, 'wwL6' => 1, 'wwM' => 1, 'wwM6' => 1, 'wwP' => 1, 'wwP6' => 1, 'wwS' => 1, 'wwS6' => 1, 'wwT' => 1, 'wwT6' => 1, 'wwZ' => 1, 'wwZ6' => 1,
+                               'DD' => 1, 'DRR1' => 1, 'E_DD' => 1, 'E_FF' => 1, 'E_PPP' => 1, 'E_Td' => 1, 'E_TTT' => 1, 'FF' => 1, 'FX1' => 1, 'FX3' => 1, 'FX625' => 1, 'FX640' => 1, 'FX655' => 1, 'FXh' => 1, 'FXh25' => 1, 'FXh40' => 1, 'FXh55' => 1, 'N' => 1, 'N05' => 1, 'Neff' => 1, 'Nh' => 1, 'Nl' => 1, 'Nlm' => 1, 'Nm' => 1, 'PPPP' => 1, 'R101' => 1, 'R102' => 1, 'R103' => 1, 'R105' => 1, 'R107' => 1, 'R110' => 1, 'R120' => 1, 'R130' => 1, 'R150' => 1, 'R600' => 1, 'R602' => 1, 'R610' => 1, 'R650' => 1, 'RR1c' => 1, 'RR1o1' => 1, 'RR1u1' => 1, 'RR1w1' => 1, 'RR3c' => 1, 'RR6c' => 1, 'RRL1c' => 1, 'RRS1c' => 1, 'RRS3c' => 1, 'RRad1' => 1, 'Rad1h' => 1, 'RRhc' => 1, 'Rh00' => 1, 'Rh02' => 1, 'Rh10' => 1, 'Rh50' => 1, 'SunD1' => 1, 'SunD3' => 1, 'T5cm' => 1, 'Td' => 1, 'TTT' => 1, 'VV' => 1, 'VV10' => 1, 'W1W2' => 1, 'WPc11' => 1, 'WPc31' => 1, 'WPc61' => 1, 'WPcd1' => 1, 'WPch1' => 1, 'ww' => 1, 'ww3' => 1, 'wwC' => 1, 'wwC6' => 1, 'wwCh' => 1, 'wwD' => 1, 'wwD6' => 1, 'wwDh' => 1, 'wwF' => 1, 'wwF6' => 1, 'wwFh' => 1, 'wwL' => 1, 'wwL6' => 1, 'wwLh' => 1, 'wwM' => 1, 'wwM6' => 1, 'wwMd' => 1, 'wwMh' => 1, 'wwP' => 1, 'wwP6' => 1, 'wwPd' => 1, 'wwPh' => 1, 'wwS' => 1, 'wwS6' => 1, 'wwSh' => 1, 'wwT' => 1, 'wwT6' => 1, 'wwTd' => 1, 'wwTh' => 1, 'wwZ' => 1, 'wwZ6' => 1, 'wwZh' => 1,
                                'PEvap' => 24, 'PSd00' => 24, 'PSd30' => 24, 'PSd60' => 24, 'RRdc' => 24, 'RSunD' => 24, 'Rd00' => 24, 'Rd02' => 24, 'Rd10' => 24, 'Rd50' => 24, 'SunD' => 24, 'Tg' => 24, 'Tm' => 24, 'Tn' => 24, 'Tx' => 24
                               );
 
@@ -79,11 +79,13 @@ my %forecastDefaultProperties = (
                                  'Tg' => 1, 'Tn' => 1, 'Tx' => 1, 'DD' => 1, 'FX1' => 1, 'Neff' => 1, 'RR6c' => 1, 'RRhc' => 1, 'Rh00' => 1, 'TTT' => 1, 'ww' => 1
                                 );
 
-# 1 = temperature in K, 2 = integer value, 3 = speed in m/s
-my %forecastPropertyTypes = ( 'Tx' => 1, 'Tn' => 1,  'Tg' => 1,    'Tm' => 1,    'Td' => 1,    'T5cm' => 1,  'TTT' => 1,
-                              'ww' => 2, 'ww3' => 2, 'WPc11' => 2, 'WPc31' => 2, 'WPc61' => 2, 'WPch1' => 2, 'WPcd1' => 2,
-                              'FF' => 3, 'FX1' => 3, 'FX3' => 3 );
-
+# 1 = temperature in K, 2 = integer value, 3 = wind speed in m/s, 4 = pressure in Pa
+my %forecastPropertyTypes = ( 
+                             'Tx' => 1, 'Tn' => 1, 'Tg' => 1, 'Tm'=> 1, 'Td'  => 1, 'T5cm'  => 1, 'TTT'   => 1,
+                             'DD' => 2, 'Neff' => 2, 'Nh' => 2, 'Nl' => 2, 'Nlm' => 2, 'Nm' => 2, 'Rh00' => 2, 'ww'  => 2, 'ww3' => 2, 'WPc11' => 2, 'WPc31' => 2, 'WPc61' => 2, 'WPch1' => 2, 'WPcd1' => 2,
+                             'FF' => 3, 'FX1' => 3, 'FX3' => 3, 'FXh' => 3,
+                             'PPPP' => 4
+                            );
 
 my @wwdText = ('Bewölkungsentwicklung nicht beobachtet',
                'Bewölkung abnehmend',
@@ -767,7 +769,7 @@ sub RotateForecast($$;$)
 
   my $stationChanged = ::ReadingsVal($name, 'fc_station', '') ne $station;
   if ($stationChanged) {
-    # different station, delete existing readings
+    # different station, delete all existing readings
     ::CommandDeleteReading(undef, "$name fc.*");
     $daysAvailable = 0;
   } elsif (defined($oldToday)) {
@@ -778,31 +780,26 @@ sub RotateForecast($$;$)
       $today = Timelocal($hash, 0, 0, 0, $tMday, $tMon, $tYear);
     }
 
-    my $daysForward = sprintf("%.0f", $today - $oldToday);  # Perl equivalent for round()
+    my $daysForward = sprintf("%0.0f", $today - $oldToday);  # round()
     if ($daysForward > 0) {
       # different day
       if ($daysForward < $daysAvailable) {
-        # shift readings forward by days
-        my @shiftProperties = ( 'date' );
-=pod
-        # @TODO replace dayProperties
-        foreach my $property (@dayProperties) {
-          push(@shiftProperties, $property);
+        my @shiftProperties = ( 'date', 'weekday' );
+        my $forecastResolution = ::AttrVal($name, 'forecastResolution', 6);
+        while (my($property, $period) = each %forecastPropertyPeriods) {
+          if ($period == 24) {
+            push(@shiftProperties, $property);
+          } else {
+            for (my $s=0; $s<24/$forecastResolution; $s++) {
+              push(@shiftProperties, $s.'_'.$property);
+            }
+          }
         }
-=cut
-        # @TODO replace literal 7
-        for (my $s=0; $s<7; $s++) {
+        for (my $s=0; $s<24/$forecastResolution; $s++) {
           push(@shiftProperties, $s.'_time');
           push(@shiftProperties, $s.'_wwd');
         }
-=pod
-        # @TODO replace literal 7 and hourProperties
-        foreach my $property (@hourProperties) {
-          for (my $s=0; $s<7; $s++) {
-            push(@shiftProperties, $s.'_'.$property);
-          }
-        }
-=cut
+        # shift readings forward by days
         for (my $d=0; $d<($daysAvailable - $daysForward); $d++) {
           my $sourcePrefix = 'fc'.($daysForward + $d).'_';
           my $destinationPrefix = 'fc'.$d.'_';
@@ -913,7 +910,7 @@ sub ProcessForecast($$$)
   my $time = time();
   my ($tSec, $tMin, $tHour, $tMday, $tMon, $tYear, $tWday, $tYday, $tIsdst) = Localtime($hash, $time);
   my $today = Timelocal($hash, 0, 0, 0, $tMday, $tMon, $tYear);
-  my $daysAvailable = 0; #RotateForecast($hash, $station, $today);
+  my $daysAvailable = RotateForecast($hash, $station, $today);
 
   my $relativeDay = 0;
   eval {
@@ -927,12 +924,12 @@ sub ProcessForecast($$$)
       die "no data retrieved from URL '$url'";
     }
 
-    ::Log3 $name, 5, "$name: ProcessForecast: data received";
+    ::Log3 $name, 5, "$name: ProcessForecast: data received, $daysAvailable days currently exist with readings";
 
     # prepare processing
     ::readingsBulkUpdate($hash, 'state', 'processing');
     my $forecastWW2Text = ::AttrVal($name, 'forecastWW2Text', 0);
-    my $forecastDays = ::AttrVal($name, 'forecastDays', 10);
+    my $forecastDays = ::AttrVal($name, 'forecastDays', 9);
     my $forecastResolution = ::AttrVal($name, 'forecastResolution', 6);
     my $forecastProperties = ::AttrVal($name, 'forecastProperties', undef);
     my @properties = split(',', $forecastProperties) if (defined($forecastProperties));
@@ -1018,11 +1015,14 @@ sub ProcessForecast($$$)
                 # convert some elements names for backward compatibility
                 my $alias = $forecastPropertyAliases{$elementName};
                 if (defined($alias)) { $elementName = $alias };
-                my $textContent = $extendedDataChildNode->nonBlankChildNodes()->get_node(1)->textContent();
-                $textContent =~ s/^\s+|\s+$//g; # trim outside
-                $textContent =~ s/\s+/ /g; # trim inside
-                my @values = split(' ',$textContent);
-                $properties{$elementName} = \@values;
+                my $selectedProperty = $selectedProperties{$elementName};
+                if (defined($selectedProperty)) {
+                  my $textContent = $extendedDataChildNode->nonBlankChildNodes()->get_node(1)->textContent();
+                  $textContent =~ s/^\s+|\s+$//g; # trim outside
+                  $textContent =~ s/\s+/ /g; # trim inside
+                  my @values = split(' ',$textContent);
+                  $properties{$elementName} = \@values;
+                }
               }
             }
           } elsif ($placemarkChildNode->nodeName() eq 'kml:Point') {
@@ -1041,7 +1041,7 @@ sub ProcessForecast($$$)
         my $forecastTime = $timestamps[$i];
         my ($fcSec, $fcMin, $fcHour, $fcMday, $fcMon, $fcYear, $fcWday, $fcYday, $fcIsdst) = Localtime($hash, $forecastTime);
         my $forecastDate = Timelocal($hash, 0, 0, 0, $fcMday, $fcMon, $fcYear);
-        my $relativeDay = sprintf("%.0f", ($forecastDate - $today)/(24*60*60)); # Perl equivalent for round()
+        $relativeDay = sprintf("%.0f", ($forecastDate - $today)/(24*60*60)); # Perl equivalent for round()
         if ($relativeDay > $forecastDays) {
           # max. number of days processed, done
           last;
@@ -1068,31 +1068,35 @@ sub ProcessForecast($$$)
         }
         while (my($property, $values) = each %properties) {
           #::Log3 $name, 5, "$name: $property  vs=" . scalar(@$values) . " ts=" . $#timestamps . " -> " . $values->[$i];
-          #if (IsForecastDayProperty($property) && scalar(@$values) >= $#timestamps && ) {
-          my $selectedProperty = $selectedProperties{$property};
-          if (defined($selectedProperty) && defined($values->[$i])) {
-            my $forecastPropertyPeriod = $forecastPropertyPeriods{$property};
-            my $forecastPropertyType = $forecastPropertyTypes{$property};
+          if (defined($values->[$i])) {
             my $value = $values->[$i];
             if ($value ne $defaultUndefSign) {
               $value =~ s/,/./g; # decimal point
-              if ($forecastPropertyType == 1) {
-                $value -= 273.15; # K -> °C
-                if (length($value) > 6) {
-                  $value = sprintf('%0.2f', $value); # round to compensate floating point granularity
+              my $forecastPropertyType = $forecastPropertyTypes{$property};
+              if (defined($forecastPropertyType)) {
+                if ($forecastPropertyType == 1) {
+                  $value -= 273.15; # K -> °C
+                  if (length($value) > 6) {
+                    $value = sprintf('%0.2f', $value); # round to compensate floating point granularity
+                  }
+                }
+                elsif ($forecastPropertyType == 2) {
+                  $value = sprintf('%0.0f', $value); # round()
+                  if ($forecastWW2Text && ($property eq 'ww') && defined($hourPrefix) && length($value) > 0) {
+                    ::readingsBulkUpdate($hash, $dayPrefix.$hourPrefix.'wwd', $wwdText[$value]);
+                  }
+                }
+                elsif ($forecastPropertyType == 3) {
+                  $value *= 3.6; # m/s -> km/h
+                  $value = sprintf('%0.0f', $value); # round()
+                }
+                elsif ($forecastPropertyType == 4) {
+                  $value /= 100; # Pa -> hPa
+                  $value = sprintf('%0.1f', $value); # round(1)
                 }
               }
-              elsif ($forecastPropertyType == 2) {
-                $value = sprintf('%0.0f', $value); # round to integer
-                if ($forecastWW2Text && ($property eq 'ww') && length($value) > 0) {
-                  ::readingsBulkUpdate($hash, $dayPrefix.$hourPrefix.'wwd', $wwdText[$value]);
-                }
-              }
-              elsif ($forecastPropertyType == 3) {
-                $value *= 3.6; # m/s -> km/h
-                $value = sprintf('%0.0f', $value); # round to integer
-              }
-              #::Log3 $name, 5, "$name: $dayPrefix $hourPrefix | $property -> $value | $forecastPropertyType";
+              #::Log3 $name, 5, "$name: $fcHour $dayPrefix $hourPrefix | $property -> $value | $forecastPropertyType";
+              my $forecastPropertyPeriod = $forecastPropertyPeriods{$property};
               if ($forecastPropertyPeriod == 24) {
                 # day property
                 ::readingsBulkUpdate($hash, $dayPrefix.$property, $value);
@@ -1122,9 +1126,11 @@ sub ProcessForecast($$$)
   }
 
   # delete existing readings of all days that have not been written
-  #::Log3 $name, 5, "$name: B $relativeDay $daysAvailable";
-  for (my $d=($relativeDay + 1); $d<$daysAvailable; $d++) {
-    ::CommandDeleteReading(undef, "$name fc".$d."_.*");
+  if ($daysAvailable > $relativeDay + 1) {
+    ::Log3 $name, 5, "$name: deleting days with index " . ($relativeDay + 1) . " to " . ($daysAvailable - 1);
+    for (my $d=($relativeDay + 1); $d<$daysAvailable; $d++) {
+      ::CommandDeleteReading(undef, "$name fc".$d."_.*");
+    }
   }
 
   ::readingsBulkUpdate($hash, 'state', 'forecast updated');
@@ -1668,6 +1674,9 @@ sub DWD_OpenData_Initialize($) {
 #
 # CHANGES
 #
+# 22.09.2018 jensb
+# feature: forecast rotation for offline update reenabled
+#
 # 20.09.2018 jensb
 # feature: CSV based forecast replaced by KML based forecast
 #
@@ -1742,7 +1751,7 @@ sub DWD_OpenData_Initialize($) {
   This modules provides two elements of the available data:
   <ul> <br>
       <li>weather forecasts:
-          <a href="https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/">Total lists of local forecasts of WMO, national and interpolated stations, all variables, 3, 9, 15, 21 UTC</a>. More than 70 properties are available for worldwide POIs and the German DWD network. This data is updated by the DWD typically every 6 hours.<br><br>
+          <a href="https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/">Total lists of local forecasts of WMO, national and interpolated stations, all variables, 3, 9, 15, 21 UTC</a>. More than 70 properties are available for worldwide POIs and the German DWD network. This data typically spans 10 days and is updated by the DWD every 6 hours.<br><br>
 
           You can request forecasts for different stations in sequence using the command <code>get forecast &lt;station code&gt;</code> or for one station continuously using the attribute <code>forecastStation</code>. To get continuous mode for more than one station you need to create separate DWD_OpenData devices. <br><br>
 
@@ -1805,7 +1814,7 @@ sub DWD_OpenData_Initialize($) {
           This command can be used before querying several warncells in sequence or to force a higher update frequency than the built-in 15 minutes. Note that all DWD_OpenData devices share a single alerts cache so updating the cache via one of the devices is sufficient.
       </li>
   </ul> <br><br>
-
+  
 
   <a name="DWD_OpenDataattr"></a>
   <b>Attributes</b><br>
@@ -1825,7 +1834,7 @@ sub DWD_OpenData_Initialize($) {
           The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.
       </li><br>
       <li>forecastDays &lt;n&gt;, default: none<br>
-          Limits number of forecast days. Setting 0 will still provide forecast data for today.
+          Limits number of forecast days. Setting 0 will still provide forecast data for today. The maximum value 9 (for today and 9 future days).
       </li><br>
       <li>forecastResolution {3|6}, default: 6 h<br>
           Time resolution (number of hours between 2 samples).
@@ -1859,21 +1868,23 @@ sub DWD_OpenData_Initialize($) {
 
   <code>fc&lt;day&gt;_[&lt;sample&gt;_]&lt;property&gt;</code> <br><br>
 
-  A description of the more than 70 properties available and their units of measurement can be found <a href="https://opendata.dwd.de/weather/lib/MetElementDefinition.xml">here</a>. The units of measurement for temperatures and wind speeds are converted to °C and km/h respectively. Only a few choice properties are listed in the following paragraphs:
+  A description of the more than 70 properties available and their units of measurement can be found <a href="https://opendata.dwd.de/weather/lib/MetElementDefinition.xml">here</a>. The units of measurement for temperatures and wind speeds are converted to °C and km/h respectively. Only a few choice properties are listed in the following paragraphs: <br><br>
 
   <ul>
-      <li>day    - relative day (0 .. 7) based on the timezone attribute where 0 is today</li><br>
+      <li>day    - relative day (0 .. 9) based on the timezone attribute where 0 is today</li><br>
 
       <li>sample - relative time (0 .. 3 or 7) equivalent to multiples of 6 or 3 hours UTC depending on the forecastHours attribute</li><br>
 
       <li>day properties (typically for 06:00 station time, see raw data of station for time relation)
           <ul>
-             <li>date       - date based on the timezone attribute</li>
-             <li>weekday    - abbreviated weekday based on the timezone attribute in the language of your FHEM system</li>
-             <li>Tn [°C]    - minimum temperature of previous 24 hours</li>
-             <li>Tx [°C]    - maximum temperature of previous 24 hours (typically for 18:00 station time)</li>
-             <li>Tm [°C]    - average temperature of previous 24 hours</li>
-             <li>Tg [°C]    - minimum temperature 5 cm above ground of previous 24 hours</li>
+             <li>date          - date based on the timezone attribute</li>
+             <li>weekday       - abbreviated weekday based on the timezone attribute in the language of your FHEM system</li>
+             <li>Tn [°C]       - minimum temperature of previous 24 hours</li>
+             <li>Tx [°C]       - maximum temperature of previous 24 hours (typically for 18:00 station time)</li>
+             <li>Tm [°C]       - average temperature of previous 24 hours</li>
+             <li>Tg [°C]       - minimum temperature 5 cm above ground of previous 24 hours</li>
+             <li>PEvap [kg/m2] - evapotranspiration of previous 24 hours</li>
+             <li>SunD [s]      - total sunshine duration of previous 24 hours</li>
           </ul>
       </li><br>
 
@@ -1894,11 +1905,11 @@ sub DWD_OpenData_Initialize($) {
              <li>ww           - weather code (see WMO 4680/4677, SYNOP)</li>
              <li>wwd          - German weather code description</li>
              <li>VV [m]       - horizontal visibility</li>
-             <li>Neff [1/8]   - effective cloud cover</li>
-             <li>Nl [1/8]     - lower level cloud cover</li>
-             <li>Nm [1/8]     - medium level cloud cover</li>
-             <li>Nh [1/8]     - high level cloud cover</li>
-             <li>PPPP [Pa]    - pressure equivalent at sea level</li>
+             <li>Neff [%]     - effective cloud cover</li>
+             <li>Nl [%]       - lower level cloud cover below 2000 m</li>
+             <li>Nm [%]       - medium level cloud cover below 7000 m</li>
+             <li>Nh [%]       - high level cloud cover obove 7000 m</li>
+             <li>PPPP [hPa]   - pressure equivalent at sea level</li>
           </ul>
       </li>
   </ul> <br>
