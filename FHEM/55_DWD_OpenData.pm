@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 16745 2018-09-23 11:40:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 16745 2018-09-28 17:11:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -929,7 +929,7 @@ sub ProcessForecast($$$)
     # prepare processing
     ::readingsBulkUpdate($hash, 'state', 'processing');
     my $forecastWW2Text = ::AttrVal($name, 'forecastWW2Text', 0);
-    my $forecastDays = ::AttrVal($name, 'forecastDays', 9);
+    my $forecastDays = ::AttrVal($name, 'forecastDays', 6);
     my $forecastResolution = ::AttrVal($name, 'forecastResolution', 6);
     my $forecastProperties = ::AttrVal($name, 'forecastProperties', undef);
     my @properties = split(',', $forecastProperties) if (defined($forecastProperties));
@@ -1833,8 +1833,8 @@ sub DWD_OpenData_Initialize($) {
           Setting forecastStation enables automatic updates every hour.
           The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.
       </li><br>
-      <li>forecastDays &lt;n&gt;, default: none<br>
-          Limits number of forecast days. Setting 0 will still provide forecast data for today. The maximum value 9 (for today and 9 future days).
+      <li>forecastDays &lt;n&gt;, default: 6<br>
+          Limits number of forecast days. Setting 0 will still provide forecast data for today. The maximum value is 9 (for today and 9 future days).
       </li><br>
       <li>forecastResolution {3|6}, default: 6 h<br>
           Time resolution (number of hours between 2 samples).
