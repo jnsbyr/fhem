@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201402 2018-09-23 16:47:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201403 2018-10-19 19:43:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -45,6 +45,7 @@ use POSIX;
 use Time::Piece;
 use DateTime;
 use Scalar::Util qw(looks_like_number);
+use List::Util qw(max);
 
 use feature qw(switch);
 no if $] >= 5.017011, warnings => 'experimental';
@@ -62,7 +63,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.014.002;
+our $VERSION   = 2.014.003;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -938,7 +939,7 @@ sub PrepareForecastData($$$$) {
         if ($i > 0 && $index == 18/$timeResolution) {
           # precipitation between 06:00 and 18:00 for all days except 1st
           $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");  # RRhc available every 12 hours at 06:00 and 18:00
-          $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");  # Rh00 available every 6 hours
+          $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");  # Rh00  available every 12 hours at 06:00 and 18:00
         }
       }
       $entry->{windSpeed}     = $windSpeed;
@@ -948,23 +949,32 @@ sub PrepareForecastData($$$$) {
       if ($i == -1) {
         my $day = 0;
         my $index = 12/$timeResolution + $offsets[1];
-        if ($timeResolution < 6 && ($index*$timeResolution)%6 > 0) {
-          # RRp12 only available every 6 hours, use next
-          $index += (6 - (($index*$timeResolution)%6))/$timeResolution;
-        }
         if ($index >= 24/$timeResolution) {
-          # when 2nd icon shows 2nd day: use 18:00 to 06:00
+          # 2nd icon shows 2nd day: use 06:00 of 2nd day
           $day += 1;
           $index = 6/$timeResolution;
-        }
+        } elsif (($index*$timeResolution)%6 > 0) {
+          # 2nd icon shows 1st day, use next multiple of 6 h
+          $index += (6 - ($index*$timeResolution)%6)/$timeResolution;
+          if ($index >= 24/$timeResolution) {
+            # next multiple of 6 h is on 2nd day: use 00:00 of 2nd day
+            $day += 1;
+            $index = 0;
+          }
+        }        
         my $hourPrefix = "fc".$day."_".$index;
-        $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");                # Rh00 available every 6 hours
-        if ($day > 0) {
+        if (($index*$timeResolution + 6)%12 == 0) {
+          # 06:00, 18:00 or 2nd icon shows 2nd day: use 12 hour values
+          $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");              # Rh00 available every 12 hours at 06:00 and 18:00
           $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");             # RRhc available every 12 hours at 06:00 and 18:00
         } else {
+          # combine nearest two 6h values
+          my $chanceOfRain1 = ::ReadingsVal($d, $hourPrefix."_R600", "?");          # R600 available every 6 hours
           my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6c", "?");         # RR6c available every 6 hours
-          my $previousHourPrefix = "fc".$day."_".($index - 6/$timeResolution);
+          my $previousHourPrefix = $index >= 6/$timeResolution? "fc".$day."_".($index - 6/$timeResolution) : "fc".($day - 1)."_".($index + (24 - 6)/$timeResolution);
+          my $chanceOfRain2 = ::ReadingsVal($d, $previousHourPrefix."_R600", "?");  # R600 available every 6 hours
           my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6c", "?"); # RR6c available every 6 hours
+          $chanceOfRain = $chanceOfRain1 eq '?' || $chanceOfRain2 eq '?'? '?' : max($chanceOfRain1, $chanceOfRain2);
           $precipitation = $precipitation1 eq '?' || $precipitation2 eq '?'? '?' : $precipitation1 + $precipitation2;
         }
       }
@@ -973,7 +983,7 @@ sub PrepareForecastData($$$$) {
 
       # precipitation color
       my $precipitationColor = '';
-      if ($entry->{precipitation} > 0 && $entry->{chanceOfRain} >= PRECIP_RAIN) {
+      if ($entry->{precipitation} ne '?' && $entry->{precipitation} > 0 && $entry->{chanceOfRain} >= PRECIP_RAIN) {
         $precipitationColor = COLOR_RAIN->[$theme];
       }
       $entry->{precipitationColor} = $precipitationColor;
@@ -1312,6 +1322,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 #
 # CHANGES
 #
+# 2018-10-05  bugfix: rain of 1st day not available for all hours
+#
 # 2018-09-22  feature: reading names modified for KML based forecast data compatibility
 #
 # 2018-07-29  feature: auto-update without reloading page
@@ -1370,6 +1382,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
 #
 # @TODO size of condition img not always identical
 # @TODO feature: use DWD alert signs
+# @TODO title
 #
 # -----------------------------------------------------------------------------
 
@@ -1439,7 +1452,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
   
   <b>Notes:</b> <br><br>
   <ul>
-    <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, RRhc, Rh00, ww, wwd and Neff must be enabled in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
+    <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, R600, RRhc, Rh00, ww, wwd and Neff must be enabled in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
     </li>
     <li>This module is designed for ease of use and does not require additional web resources - but because of this
         it does not comply to best practices in respect to inline images and inline CSS script.
