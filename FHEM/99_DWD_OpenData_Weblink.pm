@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201403 2018-10-19 19:43:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201404 2018-12-09 08:21:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.014.003;
+our $VERSION   = 2.014.004;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -983,7 +983,7 @@ sub PrepareForecastData($$$$) {
 
       # precipitation color
       my $precipitationColor = '';
-      if ($entry->{precipitation} ne '?' && $entry->{precipitation} > 0 && $entry->{chanceOfRain} >= PRECIP_RAIN) {
+      if ($entry->{precipitation} ne '?' && $entry->{precipitation} > 0 && $entry->{chanceOfRain} ne '?' && $entry->{chanceOfRain} >= PRECIP_RAIN) {
         $precipitationColor = COLOR_RAIN->[$theme];
       }
       $entry->{precipitationColor} = $precipitationColor;
