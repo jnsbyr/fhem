@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 17420 2018-12-09 08:59:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 17420 2018-12-09 18:10:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.011.000;
+our $VERSION   = 1.011.001;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -1297,7 +1297,7 @@ sub UpdateForecast($$)
   # create header readings
   my $defaultUndefSign = $forecast->{header}{defaultUndefSign};
   delete $forecast->{header}{defaultUndefSign};
-  while (my ($property, $value) = each($forecast->{header}))
+  while (my ($property, $value) = each %{$forecast->{header}})
   {
     ::readingsBulkUpdate($hash, 'fc_'.$property, $value);
   }
@@ -1341,7 +1341,7 @@ sub UpdateForecast($$)
       #::Log3 $name, 5, "$name: hourPrefix $hourPrefix";
       ::readingsBulkUpdate($hash, $dayPrefix.$hourPrefix.'time', FormatTimeLocal($hash, $forecastTime));
     }
-    while (my($property, $values) = each $forecast->{timeProperties}) {
+    while (my($property, $values) = each %{$forecast->{timeProperties}}) {
       #::Log3 $name, 5, "$name: $property  vs=" . scalar(@$values) . " ts=" . $#$timestamps . " -> " . $values->[$i];
       if (defined($values->[$i])) {
         my $value = $values->[$i];
