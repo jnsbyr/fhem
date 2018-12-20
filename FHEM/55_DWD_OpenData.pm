@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 17420 2018-12-09 18:10:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 17981 2018-12-20 17:53:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.011.001;
+our $VERSION   = 1.012.000;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -1974,7 +1974,7 @@ sub DWD_OpenData_Initialize($) {
   $hash->{GetFn}      = 'DWD_OpenData::Get';
 
   $hash->{AttrList} = 'disable:0,1 '
-                      .'forecastStation forecastDays forecastProperties forecastResolution:3,6 forecastWW2Text:0,1 '
+                      .'forecastStation forecastDays forecastProperties forecastResolution:1,3,6 forecastWW2Text:0,1 '
                       .'alertArea alertLanguage:DE,EN '
                       .'timezone '
                       .$readingFnAttributes;
@@ -1987,6 +1987,9 @@ sub DWD_OpenData_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 20.12.2018 (version 1.12.0) jensb
+# feature: enable 1h forecast resolution
 #
 # 02.12.2018 (version 1.11.0) jensb
 # feature: async processing of forecast enhanced (HttpUtils_NonblockingGet replaced by BlockingCall) to further unload FHEM process
@@ -2160,7 +2163,7 @@ sub DWD_OpenData_Initialize($) {
       <li>forecastDays &lt;n&gt;, default: 6<br>
           Limits number of forecast days. Setting 0 will still provide forecast data for today. The maximum value is 9 (for today and 9 future days).
       </li><br>
-      <li>forecastResolution {3|6}, default: 6 h<br>
+      <li>forecastResolution {1|3|6}, default: 6 h<br>
           Time resolution (number of hours between 2 samples).
       </li><br>
       <li>forecastProperties [&lt;p1&gt;[,&lt;p2&gt;]...] , default: Tx, Tn, Tg, TTT, DD, FX1, Neff, RR6c, RRhc, Rh00, ww<br>
@@ -2203,12 +2206,12 @@ sub DWD_OpenData_Initialize($) {
           <ul>
              <li>date          - date based on the timezone attribute</li>
              <li>weekday       - abbreviated weekday based on the timezone attribute in the language of your FHEM system</li>
-             <li>Tn [°C]       - minimum temperature of previous 24 hours</li>
-             <li>Tx [°C]       - maximum temperature of previous 24 hours (typically for 18:00 station time)</li>
+             <li>Tn [°C]       - minimum temperature of previous 12 hours</li>
+             <li>Tx [°C]       - maximum temperature of previous 12 hours (typically at 18:00 station time)</li>
              <li>Tm [°C]       - average temperature of previous 24 hours</li>
-             <li>Tg [°C]       - minimum temperature 5 cm above ground of previous 24 hours</li>
+             <li>Tg [°C]       - minimum temperature 5 cm above ground of previous 12 hours</li>
              <li>PEvap [kg/m2] - evapotranspiration of previous 24 hours</li>
-             <li>SunD [s]      - total sunshine duration of previous 24 hours</li>
+             <li>SunD [s]      - total sunshine duration of previous day</li>
           </ul>
       </li><br>
 
@@ -2250,7 +2253,7 @@ sub DWD_OpenData_Initialize($) {
     </ul>
   </ul> <br>
 
-  Note that depending on your device configuration each forecast consists of quite a lot of readings and each reading update will cause a FHEM event that needs to be processed. Depending on your hardware and your FHEM configuration this will take several hundred milliseconds. If you need to improve overall performance you can limit the number of readings created by setting the attribute <code>forecastProperties</code> and reduce the event processing overhead by setting the attribute <code>event-on-update-reading</code> to a small list of important reading (e.g. <code>to state,fc_time,a_time</code>). <br><br>
+  Note that depending on your device configuration each forecast consists of quite a lot of readings and each reading update will cause a FHEM event that needs to be processed. Depending on your hardware and your FHEM configuration this will take several hundred milliseconds. If you need to improve overall performance you can limit the number of readings created by setting a) the attribute <code>forecastProperties</code> to the ones you actually use, b) the attribute <code>forecastResolution</code> to the highest value suitable for your purposes and c) the attribute <code>forecastDays</code> to the lowest number suitable for your purposes. To further reduce the event processing overhead you can set the attribute <code>event-on-update-reading</code> to a small list of important reading that really need events (e.g. <code>state,fc_state,a_state</code>). <br><br>
 
   The <b>alert</b> readings are ordered by onset and are build like this: <br><br>
 
