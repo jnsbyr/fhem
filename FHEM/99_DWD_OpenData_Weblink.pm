@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201404 2018-12-09 08:21:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201405 2018-12-17 19:17:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.014.004;
+our $VERSION   = 2.014.005;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -1067,20 +1067,22 @@ sub PrepareForecastData($$$$) {
       if ($i >= 0) {
         # future alerts 0=rest of today, 1=tomorrow morning, 2=tomorrow evening, ...
         my $fcStart = $data[$i+1]{startTime};
-        my $fcEnd = ($i + 1) < $items? $data[$i+2]{startTime} : ($fcStart + 43200 - 1); # 12 hours
+        my $fcEnd = ($i + 1) < $items? $data[$i+2]{startTime} : defined($fcStart)? ($fcStart + 43200 - 1) : undef; # 12 hours
         $alertMessages{"$day-$index"} = undef;
-        for(my $a=0; $a<$alerts; $a++) {
-          my $start = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_onset", '1970-01-01 00:00:00'));
-          my $end   = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_expires", '1970-01-01 00:00:00'));
-          if (IsInRange($start, $end, $fcStart, $fcEnd)) {
-            if (!defined($alertMessages{"$day-$index"})) {
-              $alertMessages{"$day-$index"} = "";
-            }
-            if (IsActive($start, $end, $fcStart)) {
-              # already active, skip onset
-              $alertMessages{"$day-$index"} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
-            } else {
-              $alertMessages{"$day-$index"} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s von %s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_onset", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
+        if (defined($fcStart) && defined($fcEnd)) {
+          for(my $a=0; $a<$alerts; $a++) {
+            my $start = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_onset", '1970-01-01 00:00:00'));
+            my $end   = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_expires", '1970-01-01 00:00:00'));
+            if (IsInRange($start, $end, $fcStart, $fcEnd)) {
+              if (!defined($alertMessages{"$day-$index"})) {
+                $alertMessages{"$day-$index"} = "";
+              }
+              if (IsActive($start, $end, $fcStart)) {
+                # already active, skip onset
+                $alertMessages{"$day-$index"} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
+              } else {
+                $alertMessages{"$day-$index"} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s von %s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_onset", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
+              }
             }
           }
         }
@@ -1089,17 +1091,19 @@ sub PrepareForecastData($$$$) {
         my $fcStart = $data[0]{startTime};
         my $fcEnd = $data[1]{startTime};
         $alertMessages{'NOW'} = undef;
-        for(my $a=0; $a<$alerts; $a++) {
-          my $start = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_onset", '1970-01-01 00:00:00'));
-          my $end   = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_expires", '1970-01-01 00:00:00'));
-          if (IsInRange($start, $end, $fcStart, $fcEnd)) {
-            if (!defined($alertMessages{'NOW'})) {
-              $alertMessages{'NOW'} = "";
-            }
-            if (IsActive($start, $end, $now)) {
-              $alertMessages{'NOW'} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
-            } else {
-              $alertMessages{'NOW'} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s von %s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_onset", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
+        if (defined($fcStart) && defined($fcEnd)) {
+          for(my $a=0; $a<$alerts; $a++) {
+            my $start = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_onset", '1970-01-01 00:00:00'));
+            my $end   = DWD_OpenData::ParseDateTimeLocal($hash, ::ReadingsVal($d, "a_".$a."_expires", '1970-01-01 00:00:00'));
+            if (IsInRange($start, $end, $fcStart, $fcEnd)) {
+              if (!defined($alertMessages{'NOW'})) {
+                $alertMessages{'NOW'} = "";
+              }
+              if (IsActive($start, $end, $now)) {
+                $alertMessages{'NOW'} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
+              } else {
+                $alertMessages{'NOW'} .= sprintf('<div class="weaterAlertMessage" style="color:black; background-color:rgb(%s)">%s von %s bis %s<br>%s<p>%s</div>', ::ReadingsVal($d, "a_".$a."_areaColor", "255, 255, 255"), ::ReadingsVal($d, "a_".$a."_areaDesc", "?"), ::ReadingsVal($d, "a_".$a."_onset", "?"), ::ReadingsVal($d, "a_".$a."_expires", "?"), ::ReadingsVal($d, "a_".$a."_headline", "?"), ::ReadingsVal($d, "a_".$a."_description", "?"));
+              }
             }
           }
         }
@@ -1321,6 +1325,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 2018-12-17  bugfix: check if start/end readings are defined in PrepareForecastData
 #
 # 2018-10-05  bugfix: rain of 1st day not available for all hours
 #
