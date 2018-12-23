@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 69_GardenaValve.pm 5 2018-04-21 19:06:00Z jnsbyr $
+# $Id: 69_GardenaValve.pm 5 2018-12-10 19:43:00Z jnsbyr $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -770,6 +770,15 @@ sub GardenaValve_Attr(@)
       InternalTimer(gettimeofday() + 2, 'GardenaValve_Poll', $hash, 0);
       readingsSingleUpdate($hash, 'state', GARDENA_VALVE_STATE_INITIALIZED, 1);
     }
+    elsif ($attrName eq 'schedule')
+    {
+      # schedule was deleted, create new unique activity program id to replace old
+      $msg = CommandAttr(undef, $name . ' programId ' . time() % 2147483647);
+      if (length($msg) == 0)
+      {
+        $hash->{UPDATING} = 1;
+      }
+    }
     elsif ($attrName eq 'wakeupPeriod')
     {
       CommandDeleteAttr(undef, $name . ' batteryDays ');
@@ -819,6 +828,9 @@ sub GardenaValve_Poll($)
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 10.12.2018 JB
+# - create new programId when schedule is deleted to trigger program update in WiFi controller
 #
 # 21.04.2018 JB
 # - prevent creation of client connection MSGCNT/TIME stat internals from FHEM dispatch
