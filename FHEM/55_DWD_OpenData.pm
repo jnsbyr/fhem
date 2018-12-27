@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 17981 2018-12-20 17:53:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 17981 2018-12-23 16:26:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -47,6 +47,7 @@ use Encode;
 use File::Temp qw(tempfile);
 use IO::Uncompress::Unzip qw(unzip $UnzipError);
 use POSIX;
+use Scalar::Util qw(looks_like_number);
 use Storable qw(freeze thaw);
 use Time::HiRes qw(gettimeofday usleep);
 use Time::Local;
@@ -63,7 +64,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.012.000;
+our $VERSION   = 1.012.001;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -344,6 +345,22 @@ sub Attr(@) {
             }
           }
         }
+        when("forecastResolution") {
+          if (defined($value) && looks_like_number($value) && $value > 0) {
+            my $oldForecastResolution = ::AttrVal($name, 'forecastResolution', 6);
+            if ($oldForecastResolution != $value) {
+              ::CommandDeleteReading(undef, "$name fc_.*");
+            }
+          } else {
+            return "invalid value for forecastResolution (possible values are 1, 3 and 6)";
+          }
+        }
+        when("forecastStation") {
+          my $oldForecastStation = ::AttrVal($name, 'forecastStation', undef);
+          if ($oldForecastStation ne $value) {
+            ::CommandDeleteReading(undef, "$name fc_.*");
+          }
+        }
         when("forecastWW2Text") {
           if (!$value) {
             ::CommandDeleteReading(undef, "$name fc.*wwd");
@@ -365,8 +382,17 @@ sub Attr(@) {
           ::readingsSingleUpdate($hash, 'state', 'defined', 1);
           ::InternalTimer(gettimeofday() + 3, 'DWD_OpenData::Timer', $hash, 0);
         }
+        when("forecastResolution") {
+          my $oldForecastResolution = ::AttrVal($name, 'forecastResolution', 6);
+          if ($oldForecastResolution != 6) {
+            ::CommandDeleteReading(undef, "$name fc_.*");
+          }
+        }
+        when("forecastStation") {
+          ::CommandDeleteReading(undef, "$name fc_.*");
+        }
         when("forecastWW2Text") {
-          ::CommandDeleteReading(undef, "$name fc.*wwd");
+          ::CommandDeleteReading(undef, "$name fc_.*wwd");
         }
         when("timezone") {
           $hash->{'.TZ'} = $hash->{FHEM_TZ};
@@ -1893,6 +1919,11 @@ sub UpdateAlerts($$)
   } else {
     ::readingsBulkUpdate($hash, 'a_state', 'updated');
   }
+  
+  # prepare processing
+  my $alertExcludeEvents = ::AttrVal($name, 'alertExcludeEvents', undef);
+  my @excludeEventsList = split(',', $alertExcludeEvents) if (defined($alertExcludeEvents));
+  my %excludeEvents = map { $_ => 1 } @excludeEventsList;
 
   # order alerts by onset
   my $alerts = $alertsData[$communeUnion];
@@ -1902,8 +1933,8 @@ sub UpdateAlerts($$)
     # find alert for selected warncell
     my $areaIndex = 0;
     foreach my $wcId (@{$alert->{warncellid}}) {
-      if ($wcId == $warncellId) {
-        # alert found, create readings
+      if ($wcId == $warncellId && !(lc($alert->{severity}) eq 'minor' && defined($excludeEvents{$alert->{eventCode}}))) {
+        # alert found that is not on the exclude list, create readings
         my $prefix = 'a_'.$index.'_';
         ::readingsBulkUpdate($hash, $prefix.'category',     $alert->{category});
         ::readingsBulkUpdate($hash, $prefix.'event',        $alert->{eventCode});
@@ -1975,7 +2006,7 @@ sub DWD_OpenData_Initialize($) {
 
   $hash->{AttrList} = 'disable:0,1 '
                       .'forecastStation forecastDays forecastProperties forecastResolution:1,3,6 forecastWW2Text:0,1 '
-                      .'alertArea alertLanguage:DE,EN '
+                      .'alertArea alertLanguage:DE,EN alertExcludeEvents '
                       .'timezone '
                       .$readingFnAttributes;
 }
@@ -1990,6 +2021,8 @@ sub DWD_OpenData_Initialize($) {
 #
 # 20.12.2018 (version 1.12.0) jensb
 # feature: enable 1h forecast resolution
+# feature: new attribute alertExcludeEvents
+# feature: delete forecast readings if attribute forecastResolution or forecastStation are changed
 #
 # 02.12.2018 (version 1.11.0) jensb
 # feature: async processing of forecast enhanced (HttpUtils_NonblockingGet replaced by BlockingCall) to further unload FHEM process
@@ -2076,7 +2109,7 @@ sub DWD_OpenData_Initialize($) {
 <ul>
   The Deutsche Wetterdienst (DWD) provides public weather related data via its <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html">Open Data Server</a>. Any usage of the service and the data provided by the DWD is subject to the usage conditions on the Open Data Server webpage. An overview of the available content can be found at <a href="https://www.dwd.de/DE/leistungen/opendata/help/inhalt_allgemein/opendata_content_de_en_xls.xls">OpenData_weather_content.xls</a>. <br><br>
 
-  This modules provides two elements of the available data:
+  This module provides two elements of the available data:
   <ul> <br>
       <li>weather forecasts:
           <a href="https://opendata.dwd.de/weather/local_forecasts/mos/MOSMIX_L/single_stations/">Total lists of local forecasts of WMO, national and interpolated stations, all variables, 3, 9, 15, 21 UTC</a>. More than 70 properties are available for worldwide POIs and the German DWD network. This data typically spans 10 days and is updated by the DWD every 6 hours.<br><br>
@@ -2158,18 +2191,21 @@ sub DWD_OpenData_Initialize($) {
   <ul> <br>
       <li>forecastStation &lt;station code&gt;, default: none<br>
           Setting forecastStation enables automatic updates every hour.
-          The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.
+          The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.<br>
+          Note: When value is changed all existing forecast readings will be deleted.
       </li><br>
       <li>forecastDays &lt;n&gt;, default: 6<br>
           Limits number of forecast days. Setting 0 will still provide forecast data for today. The maximum value is 9 (for today and 9 future days).
       </li><br>
       <li>forecastResolution {1|3|6}, default: 6 h<br>
-          Time resolution (number of hours between 2 samples).
+          Time resolution (number of hours between 2 samples).<br>
+          Note: When value is changed all existing forecast readings will be deleted.
       </li><br>
       <li>forecastProperties [&lt;p1&gt;[,&lt;p2&gt;]...] , default: Tx, Tn, Tg, TTT, DD, FX1, Neff, RR6c, RRhc, Rh00, ww<br>
-          A list of the properties available can be found <a href="https://opendata.dwd.de/weather/lib/MetElementDefinition.xml">here</a>.
-          If you remove a property from the list existing readings must be deleted manually in continuous mode.<br>
-          Note: Not all properties are available for all stations and for all hours.
+          A list of the properties available can be found <a href="https://opendata.dwd.de/weather/lib/MetElementDefinition.xml">here</a>.<br>
+          Notes:<br>
+          - Not all properties are available for all stations and for all hours.<br>
+          - If you remove a property from the list then already existing readings must be deleted manually in continuous mode.<br>
       </li><br>
       <li>forecastWW2Text {0|1}, default: 0<br>
           Create additional wwd readings containing the weather code as a descriptive text in German language.
@@ -2179,11 +2215,15 @@ sub DWD_OpenData_Initialize($) {
   <b>alert</b> related:
   <ul> <br>
       <li>alertArea &lt;warncell id&gt;, default: none<br>
-          Setting alertArea enables automatic updates of the alerts cache every 15 minutes.
+          Setting alertArea enables automatic updates of the alerts cache every 15 minutes.<br>
           A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
       </li>
       <li>alertLanguage [DE|EN], default: DE<br>
-          Language of descriptive alert properties.</a>.
+          Language of descriptive alert properties.
+      </li>
+      <li>alertExcludeEvents &lt;event code&gt;, default: none<br>
+          Comma separated list of numeric events codes for which no alerts should be created.<br>
+          Only minor alerts may be suppressed. Use at your own risk!
       </li>
   </ul> <br><br>
 
@@ -2200,9 +2240,9 @@ sub DWD_OpenData_Initialize($) {
   <ul>
       <li>day    - relative day (0 .. 9) based on the timezone attribute where 0 is today</li><br>
 
-      <li>sample - relative time (0 .. 3 or 7) equivalent to multiples of 6 or 3 hours UTC depending on the forecastHours attribute</li><br>
+      <li>sample - relative time (0 .. 3, 7 or 23) equivalent to multiples of 6, 3 or 1 hours UTC depending on the <code>forecastResolution</code> attribute</li><br>
 
-      <li>day properties (typically for 06:00 station time, see raw data of station for time relation)
+      <li>day properties (typically for 06:00 station time, see raw data of station for actual time relation)
           <ul>
              <li>date          - date based on the timezone attribute</li>
              <li>weekday       - abbreviated weekday based on the timezone attribute in the language of your FHEM system</li>
@@ -2223,6 +2263,10 @@ sub DWD_OpenData_Initialize($) {
              <li>DD [°]       - average wind direction 10 m above ground</li>
              <li>FF [km/h]    - average wind speed 10 m above ground</li>
              <li>FX1 [km/h]   - maximum wind speed in the last hour</li>
+             <li>SunD1 [s]    - sunshine duration in the last hour</li>
+             <li>SunD3 [s]    - sunshine duration in the last 3 hours</li>
+             <li>RR1c [kg/m2] - precipitation amount in the last hour</li>
+             <li>RR3c [kg/m2] - precipitation amount in the last 3 hours</li>
              <li>RR6c [kg/m2] - precipitation amount in the last 6 hours</li>
              <li>R600 [%]     - probability of rain in the last 6 hours</li>
              <li>RRhc [kg/m2] - precipitation amount in the last 12 hours</li>
@@ -2235,7 +2279,7 @@ sub DWD_OpenData_Initialize($) {
              <li>Neff [%]     - effective cloud cover</li>
              <li>Nl [%]       - lower level cloud cover below 2000 m</li>
              <li>Nm [%]       - medium level cloud cover below 7000 m</li>
-             <li>Nh [%]       - high level cloud cover obove 7000 m</li>
+             <li>Nh [%]       - high level cloud cover above 7000 m</li>
              <li>PPPP [hPa]   - pressure equivalent at sea level</li>
           </ul>
       </li>
@@ -2247,13 +2291,11 @@ sub DWD_OpenData_Initialize($) {
       <li>fc_state       - state of the last forecast update, possible values are 'updated' and 'error: ...'</li>
       <li>fc_station     - forecast station code (WMO or DWD)</li>
       <li>fc_description - station description</li>
-      <li>fc_coordinates - world coordinat and height of station</li>
+      <li>fc_coordinates - world coordinate and height of station</li>
       <li>fc_time        - time the forecast was issued based on the timezone attribute</li>
       <li>fc_copyright   - legal information, must be displayed with forecast data, see DWD usage conditions</li>
     </ul>
   </ul> <br>
-
-  Note that depending on your device configuration each forecast consists of quite a lot of readings and each reading update will cause a FHEM event that needs to be processed. Depending on your hardware and your FHEM configuration this will take several hundred milliseconds. If you need to improve overall performance you can limit the number of readings created by setting a) the attribute <code>forecastProperties</code> to the ones you actually use, b) the attribute <code>forecastResolution</code> to the highest value suitable for your purposes and c) the attribute <code>forecastDays</code> to the lowest number suitable for your purposes. To further reduce the event processing overhead you can set the attribute <code>event-on-update-reading</code> to a small list of important reading that really need events (e.g. <code>state,fc_state,a_state</code>). <br><br>
 
   The <b>alert</b> readings are ordered by onset and are build like this: <br><br>
 
@@ -2301,7 +2343,11 @@ sub DWD_OpenData_Initialize($) {
 
   Note that all alert readings are completely replaced and reindexed with each update! <br><br>
 
-  Further information regarding the alert properties can be found in the documentation of the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_dwd_profile_de_pdf.pdf">CAP DWS Profile</a>. <br>
+  Further information regarding the alert properties can be found in the documentation of the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_dwd_profile_de_pdf.pdf">CAP DWS Profile</a>. <br><br>
+
+  <b>Performance</b> <br><br>
+  
+  Note that depending on your device configuration each forecast consists of quite a lot of readings and each reading update will cause a FHEM event that needs to be processed. Depending on your hardware and your FHEM configuration this will take several hundred milliseconds. If you need to improve overall performance you can limit the number of readings created by setting a) the attribute <code>forecastProperties</code> to the ones you actually use, b) the attribute <code>forecastResolution</code> to the highest value suitable for your purposes and c) the attribute <code>forecastDays</code> to the lowest number suitable for your purposes. To further reduce the event processing overhead you can set the attribute <code>event-on-update-reading</code> to a small list of important reading that really need events (e.g. <code>state,fc_state,a_state</code>). For almost the same reason be selective when creating a log device. If you use wildcards for all readings without filtering either at the source device with <a href="#readingFnAttributes">readingFnAttributes</a> or at the destination device with a regexp you will get significant extra file IO when the readings are updated and quite a lot of data. <br>
 
 </ul> <br>
 
