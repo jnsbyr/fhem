@@ -5,6 +5,7 @@ This repository contains several modules for the [FHEM SmartHome Server](https:/
 
 - [Gardena 1251 irrigation valve management](#gardena-01251-irrigation-valve-management)
 - [rtl_433 wrapper](#rtl_433-wrapper)
+- [Firmata modules](#firmata-modules)
 - [Weather module for DWD](#weather-module-for-dwd)
 - [Widget for DWD weather module](#widget-for-dwd-weather-module)
 
@@ -51,6 +52,28 @@ The built-in module help (Commandref) provides essential information on the inst
 - [40_RTL433.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/40_RTL433.pm)
 
 
+## Firmata modules
+
+Support for [Firmata](https://github.com/firmata/protocol) devices was originally introduced to FHEM by [ntruchess](https://github.com/ntruchsess). This collection of modules is based on the version maintained by ntruchess until 2014.
+
+#### Installation and Configuration
+The built-in module help (Commandref) provides essential information on the installation and configuration of the module.
+
+#### Discussions
+A discussion about the modules can be found in the [FHEM Forum](https://forum.fhem.de/index.php/topic,81815.120.html).
+
+#### Status
+- FHEM distro modules
+
+#### Files
+- [10_FRM.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/10_FRM.pm)
+- [20_FRM_AD.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_AD.pm)
+- [20_FRM_I2C.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_I2C.pm)
+- [20_FRM_IN.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_IN.pm)
+- [20_FRM_OUT.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_OUT.pm)
+- [20_FRM_PWM.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_PWM.pm)
+
+
 ## Weather module for DWD
 
 Weather module for forecast data and alerts provided by the [Deutsche Wetterdienst (DWD) OpenData Server](https://www.dwd.de/DE/leistungen/opendata/opendata.html)
@@ -58,8 +81,7 @@ Weather module for forecast data and alerts provided by the [Deutsche Wetterdien
 #### Features
 - asynchronous http download
 - asynchronous alerts preprocessing and caching
-- CSV parser for forecast
-- XML parser for alerts
+- XML parser for forecast and alerts
 - timezone conversion
 - localized weekday names
 
@@ -67,7 +89,7 @@ Weather module for forecast data and alerts provided by the [Deutsche Wetterdien
 The built-in module help (Commandref) provides detailed information on the installation and configuration of the module. You can use Pod2Html (e.g. at https://metacpan.org/pod2html) to preview the module help. A step-by-step guide in German language can be found in the [FHEM Wiki](https://wiki.fhem.de/wiki/DWD_OpenData).
 
 #### Discussions
-A discussion about the introduction of the module to FHEM can be found in the [FHEM Forum](https://forum.fhem.de/index.php/topic,83097.0.html).
+An ongoing discussion about the module can be found in the [FHEM Forum](https://forum.fhem.de/index.php/topic,83097.0.html).
 
 #### Status
 - FHEM distro module
