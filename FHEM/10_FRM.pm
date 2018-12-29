@@ -1,6 +1,6 @@
 ########################################################################################
 #
-# $Id: 10_FRM.pm 15941 2018-12-23 21:55:00Z jensb $
+# $Id: 10_FRM.pm 15941 2018-12-29 18:08:00Z jensb $
 #
 # FHEM module to communicate with Firmata devices
 #
@@ -202,7 +202,7 @@ sub FRM_Undef($) {
 
 =cut
 
-sub FRM_Start {
+sub FRM_Start($) {
   my ($hash) = @_;
   my $name  = $hash->{NAME};
 
@@ -276,9 +276,9 @@ sub FRM_Notify {
 
 =cut
 
-sub FRM_is_firmata_connected {
+sub FRM_is_firmata_connected($) {
   my ($hash) = @_;
-  return defined($hash->{FirmataDevice}) && defined ($hash->{FirmataDevice}->{io});
+  return defined($hash->{FirmataDevice}) && defined($hash->{FirmataDevice}->{io});
 }
 
 =item FRM_Set($@)
@@ -294,14 +294,13 @@ sub FRM_is_firmata_connected {
 sub FRM_Set($@) {
   my ($hash, @a) = @_;
   return "Need at least one parameters" if(@a < 2);
-  return "Unknown argument $a[1], choose one of " . join(" ", sort keys %sets)
-    if(!defined($sets{$a[1]}));
+  return "Unknown argument $a[1], choose one of " . join(":noArg ", sort keys %sets) . ":noArg" if(!defined($sets{$a[1]}));
   my $command = $a[1];
   my $value = $a[2];
 
   COMMAND_HANDLER: {
     $command eq "reset" and do {
-      return $hash->{NAME}." is not connected" unless (FRM_is_firmata_connected($hash) && (defined $hash->{FD} or ($^O=~/Win/ and defined $hash->{USBDev})));
+      return "not connected to Firmata device" unless (FRM_is_firmata_connected($hash) && (defined $hash->{FD} or ($^O=~/Win/ and defined $hash->{USBDev})));
       $hash->{FirmataDevice}->system_reset();
       FRM_ClearConfiguration($hash);
       if (defined $hash->{SERVERSOCKET}) {
@@ -342,8 +341,7 @@ sub FRM_Set($@) {
 sub FRM_Get($@) {
   my ($hash, @a) = @_;
   return "Need at least one parameters" if(@a < 2);
-  return "Unknown argument $a[1], choose one of " . join(" ", sort keys %gets)
-    if(!defined($gets{$a[1]}));
+  return "Unknown argument $a[1], choose one of " . join(":noArg ", sort keys %gets) . ":noArg" if(!defined($gets{$a[1]}));
   my $name = shift @a;
   my $cmd = shift @a;
   ARGUMENT_HANDLER: {
@@ -351,14 +349,14 @@ sub FRM_Get($@) {
       if (FRM_is_firmata_connected($hash)) {
         return $hash->{FirmataDevice}->{metadata}->{firmware};
       } else {
-        return "not connected to FirmataDevice";
+        return "not connected to Firmata device";
       }
     };
     $cmd eq "version" and do {
       if (FRM_is_firmata_connected($hash)) {
         return $hash->{FirmataDevice}->{metadata}->{firmware_version};
       } else {
-        return "not connected to FirmataDevice";
+        return "not connected to Firmata device";
       }
     };
   }
@@ -1174,10 +1172,10 @@ package main;
 # im Master wird der Hash sendpackage gelöscht.
 #
 #   $package->{i2caddress}; # single byte value
-#   $package->{direction}; # i2cread|i2cwrite
-#   $package->{data}; # space separated list of values
-#   $package->{reg}; # register
-#   $package->{nbyte}; # number of bytes to read
+#   $package->{direction};  # i2cread|i2cwrite
+#   $package->{data};       # space separated list of values
+#   $package->{reg};        # register
+#   $package->{nbyte};      # number of bytes to read
 #
 #   $firmata->i2c_read($address,$register,$bytestoread);
 #   $firmata->i2c_write($address,@data);
@@ -1189,30 +1187,38 @@ package main;
 
 sub FRM_I2C_Write($$)
 {
-  my ($hash,$package)  = @_;
-
-  if (FRM_is_firmata_connected($hash) && defined($package) && defined($package->{i2caddress})) {
-    my $firmata = $hash->{FirmataDevice};
-    COMMANDHANDLER: {
-      $package->{direction} eq "i2cwrite" and do {
-        if (defined $package->{reg}) {
-          $firmata->i2c_write($package->{i2caddress},$package->{reg},split(" ",$package->{data}));
-        } else {
-          $firmata->i2c_write($package->{i2caddress},split(" ",$package->{data}));
-        }
-        last;
-      };
-      $package->{direction} eq "i2cread" and do {
-        delete $hash->{I2C_ERROR};
-        if (defined $package->{reg}) {
-          $firmata->i2c_readonce($package->{i2caddress},$package->{reg},defined $package->{nbyte} ? $package->{nbyte} : 1);
-        } else {
-          $firmata->i2c_readonce($package->{i2caddress},defined $package->{nbyte} ? $package->{nbyte} : 1);
-        }
-        last;
-      };
+  my ($hash, $package) = @_;
+  my $name = $hash->{NAME};
+  
+  if (defined($package) && defined($package->{i2caddress})) {
+    if (FRM_is_firmata_connected($hash)) {
+      my $firmata = $hash->{FirmataDevice};
+      COMMANDHANDLER: {
+        $package->{direction} eq 'i2cwrite' and do {
+          if (defined $package->{reg}) {
+            $firmata->i2c_write($package->{i2caddress}, $package->{reg}, split(" ", $package->{data}));
+          } else {
+            $firmata->i2c_write($package->{i2caddress}, split(" ", $package->{data}));
+          }
+          last;
+        };
+        $package->{direction} eq 'i2cread' and do {
+          delete $hash->{I2C_ERROR};
+          if (defined $package->{reg}) {
+            $firmata->i2c_readonce($package->{i2caddress}, $package->{reg}, defined($package->{nbyte})? $package->{nbyte} : 1);
+          } else {
+            $firmata->i2c_readonce($package->{i2caddress}, defined($package->{nbyte})? $package->{nbyte} : 1);
+          }
+          last;
+        };
+      }
+    } else {
+      $package->{$name . '_SENDSTAT'} = "I2C operation failed, IODev $name is not connected";
+      FRM_forall_clients($hash, \&FRM_i2c_update_device, $package);
     }
   }
+  
+  return undef;
 }
 
 =item FRM_i2c_observer
@@ -1226,9 +1232,19 @@ sub FRM_I2C_Write($$)
 =cut
 
 sub FRM_i2c_observer($$) {
-  my ($data,$hash) = @_;
-  Log3 $hash->{NAME},5,"onI2CMessage address: '".$data->{address}."', register: '".$data->{register}."' data: [".(join(',',@{$data->{data}}))."]";
-  FRM_forall_clients($hash,\&FRM_i2c_update_device,$data);
+  my ($data, $hash) = @_;
+  
+  Log3 $hash->{NAME}, 5, "onI2CMessage address: '" . $data->{address} . "', register: '" . $data->{register} . "' data: [" . join(',', @{$data->{data}}) . "]";
+
+  my $sendStat = defined($hash->{I2C_ERROR})? $hash->{I2C_ERROR} : "Ok";
+  my %package = (i2caddress => $data->{address},
+                 direction  => "i2cread",
+                 reg        => $data->{register},
+                 nbyte      => scalar(@{$data->{data}}),
+                 received   => join (' ', @{$data->{data}}),
+                 $hash->{NAME} . '_SENDSTAT' => "$sendStat"
+                );
+  FRM_forall_clients($hash, \&FRM_i2c_update_device, \%package);
 }
 
 =item FRM_i2c_update_device
@@ -1243,33 +1259,10 @@ sub FRM_i2c_observer($$) {
 =cut
 
 sub FRM_i2c_update_device($$) {
-  my ($chash,$data) = @_;
+  my ($chash, $package) = @_;
 
-  if (defined $chash->{I2C_Address} and $chash->{I2C_Address} eq $data->{address}) {
-    my $sendStat = "Ok";
-    if (defined($chash->{IODev}->{I2C_ERROR})) {
-      $sendStat = $chash->{IODev}->{I2C_ERROR};
-    }
-    CallFn($chash->{NAME}, "I2CRecFn", $chash, {
-      i2caddress => $data->{address},
-      direction  => "i2cread",
-      reg        => $data->{register},
-      nbyte      => scalar(@{$data->{data}}),
-      received   => join (' ',@{$data->{data}}),
-      $chash->{IODev}->{NAME}."_SENDSTAT" => $sendStat,
-    });
-  } elsif (defined $chash->{"i2c-address"} && $chash->{"i2c-address"}==$data->{address}) {
-    # special processing for module FRM_I2C: create register image
-    my $replydata = $data->{data};
-    my @values = split(" ",ReadingsVal($chash->{NAME},"values",""));
-    while (scalar(@values) < 256) {
-      push(@values, 0);
-    }
-    splice(@values,$data->{register},@$replydata,@$replydata);
-    readingsBeginUpdate($chash);
-    $chash->{STATE}="active";
-    readingsBulkUpdate($chash,"values",join (" ",@values),1);
-    readingsEndUpdate($chash,1);
+  if (defined($chash->{I2C_Address}) && $chash->{I2C_Address} eq $package->{i2caddress}) {
+    CallFn($chash->{NAME}, "I2CRecFn", $chash, $package);
   }
 }
 
@@ -1951,6 +1944,11 @@ sub FRM_Serial_Close($) {
     o modified FRM_i2c_update_device to init register image for FRM_I2C module with zeros before updating received bytes
     o formatted
 
+  29.12.2018 jensb
+    o removed unused FHEMWEB set/get text fields
+    o moved I2C receive processing for FRM_I2C to FRM_I2C module
+    o set I2C SENDSTAT to error if I2CWrtFn is called while not connected and propagate error by synchronously calling I2CRecFn
+    
 =cut
 
 =pod
