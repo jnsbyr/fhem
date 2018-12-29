@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 17981 2018-12-23 16:26:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 17981 2018-12-29 10:39:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -64,7 +64,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.012.001;
+our $VERSION   = 1.012.002;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -335,7 +335,7 @@ sub Attr(@) {
       given($attribute) {
         when("disable") {
           # enable/disable polling
-          if ($main::init_done) {
+          if ($::init_done) {
             if ($value) {
               ::RemoveInternalTimer($hash);
               ::readingsSingleUpdate($hash, 'state', 'disabled', 1);
@@ -348,8 +348,8 @@ sub Attr(@) {
         when("forecastResolution") {
           if (defined($value) && looks_like_number($value) && $value > 0) {
             my $oldForecastResolution = ::AttrVal($name, 'forecastResolution', 6);
-            if ($oldForecastResolution != $value) {
-              ::CommandDeleteReading(undef, "$name fc_.*");
+            if ($::init_done && defined($oldForecastResolution) && $oldForecastResolution != $value) {
+              ::CommandDeleteReading(undef, "$name ^fc.*");
             }
           } else {
             return "invalid value for forecastResolution (possible values are 1, 3 and 6)";
@@ -357,13 +357,13 @@ sub Attr(@) {
         }
         when("forecastStation") {
           my $oldForecastStation = ::AttrVal($name, 'forecastStation', undef);
-          if ($oldForecastStation ne $value) {
-            ::CommandDeleteReading(undef, "$name fc_.*");
+          if ($::init_done && defined($oldForecastStation) && $oldForecastStation ne $value) {
+            ::CommandDeleteReading(undef, "$name ^fc.*");
           }
         }
         when("forecastWW2Text") {
-          if (!$value) {
-            ::CommandDeleteReading(undef, "$name fc.*wwd");
+          if ($::init_done && !$value) {
+            ::CommandDeleteReading(undef, "$name ^fc.*wwd\$");
           }
         }
         when("timezone") {
@@ -385,14 +385,14 @@ sub Attr(@) {
         when("forecastResolution") {
           my $oldForecastResolution = ::AttrVal($name, 'forecastResolution', 6);
           if ($oldForecastResolution != 6) {
-            ::CommandDeleteReading(undef, "$name fc_.*");
+            ::CommandDeleteReading(undef, "$name ^fc.*");
           }
         }
         when("forecastStation") {
-          ::CommandDeleteReading(undef, "$name fc_.*");
+          ::CommandDeleteReading(undef, "$name ^fc.*");
         }
         when("forecastWW2Text") {
-          ::CommandDeleteReading(undef, "$name fc_.*wwd");
+          ::CommandDeleteReading(undef, "$name ^fc.*wwd\$");
         }
         when("timezone") {
           $hash->{'.TZ'} = $hash->{FHEM_TZ};
@@ -824,7 +824,7 @@ sub RotateForecast($$;$)
   my $stationChanged = ::ReadingsVal($name, 'fc_station', '') ne $station;
   if ($stationChanged) {
     # different station, delete all existing readings
-    ::CommandDeleteReading(undef, "$name fc.*");
+    ::CommandDeleteReading(undef, "$name ^fc.*");
     $daysAvailable = 0;
   } elsif (defined($oldToday)) {
     # same station, shift existing readings
@@ -869,12 +869,12 @@ sub RotateForecast($$;$)
         }
         # delete existing readings of all days that have not been written
         for (my $d=($daysAvailable - $daysForward); $d<$daysAvailable; $d++) {
-          ::CommandDeleteReading(undef, "$name fc".$d."_.*");
+          ::CommandDeleteReading(undef, "$name ^fc".$d."_.*");
         }
         $daysAvailable -= $daysForward;
       } else {
-        # nothing to shift, delete existing readings
-        ::CommandDeleteReading(undef, "$name fc.*");
+        # nothing remains after shifting, delete existing day readings
+        ::CommandDeleteReading(undef, "$name ^fc\\d+.*");
         $daysAvailable = 0;
       }
     }
@@ -1414,7 +1414,7 @@ sub UpdateForecast($$)
   if ($relativeDay >= 0 && $daysAvailable > $relativeDay + 1) {
     ::Log3 $name, 5, "$name: deleting days with index " . ($relativeDay + 1) . " to " . ($daysAvailable - 1);
     for (my $d=($relativeDay + 1); $d<$daysAvailable; $d++) {
-      ::CommandDeleteReading(undef, "$name fc".$d."_.*");
+      ::CommandDeleteReading(undef, "$name ^fc".$d."_.*");
     }
   }
 
@@ -1886,7 +1886,7 @@ sub UpdateAlerts($$)
   my $name = $hash->{NAME};
 
   # delete existing alert readings
-  ::CommandDeleteReading(undef, "$name a_.*");
+  ::CommandDeleteReading(undef, "$name ^a_.*");
 
   ::readingsBeginUpdate($hash);
 
@@ -1919,10 +1919,13 @@ sub UpdateAlerts($$)
   } else {
     ::readingsBulkUpdate($hash, 'a_state', 'updated');
   }
-  
+
   # prepare processing
   my $alertExcludeEvents = ::AttrVal($name, 'alertExcludeEvents', undef);
   my @excludeEventsList = split(',', $alertExcludeEvents) if (defined($alertExcludeEvents));
+  foreach my $excludeEvent (@excludeEventsList) {
+    $excludeEvent =~ s/^\s+|\s+$//g; # trim
+  }
   my %excludeEvents = map { $_ => 1 } @excludeEventsList;
 
   # order alerts by onset
@@ -2018,6 +2021,9 @@ sub DWD_OpenData_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 28.12.2018 (version 1.12.1) jensb
+# bugfix: modified regexp to delete forecast readings on attribute change 
 #
 # 20.12.2018 (version 1.12.0) jensb
 # feature: enable 1h forecast resolution
@@ -2346,7 +2352,7 @@ sub DWD_OpenData_Initialize($) {
   Further information regarding the alert properties can be found in the documentation of the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_dwd_profile_de_pdf.pdf">CAP DWS Profile</a>. <br><br>
 
   <b>Performance</b> <br><br>
-  
+
   Note that depending on your device configuration each forecast consists of quite a lot of readings and each reading update will cause a FHEM event that needs to be processed. Depending on your hardware and your FHEM configuration this will take several hundred milliseconds. If you need to improve overall performance you can limit the number of readings created by setting a) the attribute <code>forecastProperties</code> to the ones you actually use, b) the attribute <code>forecastResolution</code> to the highest value suitable for your purposes and c) the attribute <code>forecastDays</code> to the lowest number suitable for your purposes. To further reduce the event processing overhead you can set the attribute <code>event-on-update-reading</code> to a small list of important reading that really need events (e.g. <code>state,fc_state,a_state</code>). For almost the same reason be selective when creating a log device. If you use wildcards for all readings without filtering either at the source device with <a href="#readingFnAttributes">readingFnAttributes</a> or at the destination device with a regexp you will get significant extra file IO when the readings are updated and quite a lot of data. <br>
 
 </ul> <br>
