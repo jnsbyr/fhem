@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201405 2018-12-17 19:17:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201406 2018-12-30 16:48:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.014.005;
+our $VERSION   = 2.014.006;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -928,15 +928,15 @@ sub PrepareForecastData($$$$) {
     # max wind speed and direction, precipitation
     if ($i % 2 == 1) {
       my ($windSpeed, $windDirection, $precipitation, $chanceOfRain);
-      for (my $index = 0; $index < 24/$timeResolution; $index++) {
-        my $hourPrefix = "fc".$day."_".$index;
+      for (my $hourIndex = 0; $hourIndex < 24/$timeResolution; $hourIndex++) {
+        my $hourPrefix = "fc".$day."_".$hourIndex;
         my $value = ::ReadingsVal($d, $hourPrefix."_FX1", undef);
-        if (defined($value) && (!defined($windSpeed) || $value > $windSpeed) && ($i > 0 || $now < ($epoch + 7200))) {
+        if (defined($value) && (!defined($windSpeed) || $value > $windSpeed) && ($hourIndex >= $index || $i > 0)) {
           # max wind speed of (remaining) day
           $windSpeed = $value;
           $windDirection = ::ReadingsVal($d, $hourPrefix."_DD", "?");
         }
-        if ($i > 0 && $index == 18/$timeResolution) {
+        if ($i > 0 && $hourIndex == 18/$timeResolution) {
           # precipitation between 06:00 and 18:00 for all days except 1st
           $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");  # RRhc available every 12 hours at 06:00 and 18:00
           $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");  # Rh00  available every 12 hours at 06:00 and 18:00
@@ -1325,6 +1325,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 2018-12-30  bugfix: max. wind speed of remaining hours of today in PrepareForecastData
 #
 # 2018-12-17  bugfix: check if start/end readings are defined in PrepareForecastData
 #
