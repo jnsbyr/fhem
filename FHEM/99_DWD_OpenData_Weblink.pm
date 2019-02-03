@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201406 2018-12-30 16:48:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201500 2018-02-02 09:24:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -45,7 +45,7 @@ use POSIX;
 use Time::Piece;
 use DateTime;
 use Scalar::Util qw(looks_like_number);
-use List::Util qw(max);
+use List::Util qw(min max);
 
 use feature qw(switch);
 no if $] >= 5.017011, warnings => 'experimental';
@@ -63,7 +63,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.014.006;
+our $VERSION   = 2.015.000;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -755,74 +755,67 @@ sub PrepareForecastData($$$$) {
     my $time = ::ReadingsVal($d, $hourPrefix."_time", "");
     my $epoch = ::time_str2num($date.' '.$time);
     if ($timeResolution == 6) {
-      # 6 hours steps: default index 1 (06:00 UTC) and 2 (12:00 UTC)
+      # 6 hours steps: 0...3, default index 1 (06:00 UTC) and 2 (12:00 UTC)
       if ($now < ($epoch + 7200)) {
         # sample not older than 2 hours
-        if ($index <= 0) {
-          # until 02:00 -> 00:00 + 12:00
-          push(@offsets, -1);
+        if ($index <= 1) {
+          # until 08:00 - 1st icon follows, 2nd icon stays at 12:00
+          push(@offsets, max($index - 1, -1));
           push(@offsets, 0);
-        } elsif ($index == 1) {
-          # until 08:00 -> 06:00 + 12:00
-          push(@offsets, 0);
-          push(@offsets, 0);
-        } elsif ($index == 2) {
-          # until 14:00 -> 12:00 + 18:00
-          push(@offsets, 1);
-          push(@offsets, 1);
         } else {
-          # after 14:00 -> 18:00 + 00:00
-          push(@offsets, 2);
-          push(@offsets, 2);
+          # until 20:00 - 1st icon follows, 2nd icon is 6 hours later
+          push(@offsets, min($index - 1, 2));
+          push(@offsets, min($index - 1, 2));
         }
         last;
       } elsif ($index > 2) {
-        # last sample of day, after 18:00 -> 18:00 + 00:00
+        # after 20:00 -> 18:00 + 00:00
         push(@offsets, 2);
         push(@offsets, 2);
       }
-    } else {
-      # 3 hours steps: default index 2 (06:00 UTC) and 4 (12:00 UTC)
+    } elsif ($timeResolution == 3) {
+      # 3 hours steps: 0...7, default index 2 (06:00 UTC) and 4 (12:00 UTC)
       if ($now < ($epoch + 7200)) {
         # sample not older than 2 hours
-        if ($index <= 0) {
-          # until 02:00 -> 00:00 + 12:00
-          push(@offsets, -2);
+        if ($index <= 2) {
+          # until 08:00 - 1st icon follows, 2nd icon stays at 12:00
+          push(@offsets, max($index - 2, -2));
           push(@offsets, 0);
-        } elsif ($index == 1) {
-          # until 05:00 -> 03:00 + 12:00
-          push(@offsets, -1);
-          push(@offsets, 0);
-        } elsif ($index == 2) {
-          # until 08:00 -> 06:00 + 12:00
-          push(@offsets, 0);
-          push(@offsets, 0);
-        } elsif ($index == 3) {
-          # until 11:00 -> 09:00 + 15:00
-          push(@offsets, 1);
-          push(@offsets, 1);
-        } elsif ($index == 4) {
-          # until 14:00 -> 12:00 + 18:00
-          push(@offsets, 2);
-          push(@offsets, 2);
-        } elsif ($index == 5) {
-          # until 17:00 -> 15:00 + 21:00
-          push(@offsets, 3);
-          push(@offsets, 3);
-        } elsif ($index == 6) {
-          # until 20:00 -> 18:00 + 00:00
-          push(@offsets, 4);
-          push(@offsets, 4);
         } else {
-          # after 20:00 -> 21:00 + 03:00
-          push(@offsets, 5);
-          push(@offsets, 5);
+          # until 23:00 - 1st icon follows, 2nd icon is 6 hours later
+          push(@offsets, min($index - 2, 5));
+          push(@offsets, min($index - 2, 5));
         }
         last;
-      } elsif ($index > 6) {
-        # last sample of day, after 21:00 -> 21:00 + 03:00
+      } elsif ($index > 5) {
+        # after 23:00 -> 21:00 + 03:00
         push(@offsets, 5);
         push(@offsets, 5);
+        last;
+      }
+    } else {
+      # assume 1 hour steps: 0..23 default index 6 (06:00 UTC) and 12 (12:00 UTC)
+      if ($now < ($epoch + 3600)) {
+        # sample not older than 1 hour
+        if ($index <= 6) {
+          # until 07:00 - 1st icon follows, 2nd icon stays at 12:00
+          push(@offsets, max($index - 6, -6));
+          push(@offsets, 0);
+        } elsif ($index <= 20) {
+          # until 21:00 - 1st icon follows, 2nd icon is 6 hours later
+          push(@offsets, min($index - 6, 15));
+          push(@offsets, min($index - 6, 15));
+        } else {
+          # until 23:00 - 1st icon follows, 2nd icon is halfway before 03:00
+          push(@offsets, min($index - 6, 15));
+          push(@offsets, min($index - 7, 15));
+        }
+        last;
+      } elsif ($index > 21) {
+        # after 23:00 -> 23:00 + 03:00
+        push(@offsets, 15);
+        push(@offsets, 15);
+        last;
       }
     }
   }
@@ -856,7 +849,7 @@ sub PrepareForecastData($$$$) {
     my $epoch = ::time_str2num($date.' '.$time.':00');
     my $code = ::ReadingsVal($d, $hourPrefix."_ww", "-1");
     $entry->{description} = "";
-    if ($code > 0 && $code != 2) {
+    if ($code > 0 && $code > 3) {
       $entry->{description} = ::ReadingsVal($d, $hourPrefix."_wwd", "?");
     }
 
@@ -927,22 +920,24 @@ sub PrepareForecastData($$$$) {
 
     # max wind speed and direction, precipitation
     if ($i % 2 == 1) {
-      my ($windSpeed, $windDirection, $precipitation, $chanceOfRain);
+      my ($maxWindSpeed, $windDirection, $precipitation, $chanceOfRain);
       for (my $hourIndex = 0; $hourIndex < 24/$timeResolution; $hourIndex++) {
-        my $hourPrefix = "fc".$day."_".$hourIndex;
-        my $value = ::ReadingsVal($d, $hourPrefix."_FX1", undef);
-        if (defined($value) && (!defined($windSpeed) || $value > $windSpeed) && ($hourIndex >= $index || $i > 0)) {
+        my $hourPrefix = 'fc'.$day.'_'.$hourIndex;
+        my $windSpeed = ::ReadingsVal($d, $hourPrefix.'_FX1', undef);
+        if (defined($windSpeed) && (!defined($maxWindSpeed) || $windSpeed > $maxWindSpeed) && ($hourIndex >= $index || $i > 0)) {
           # max wind speed of (remaining) day
-          $windSpeed = $value;
-          $windDirection = ::ReadingsVal($d, $hourPrefix."_DD", "?");
+          $maxWindSpeed = $windSpeed;
+          $windDirection = ::ReadingsVal($d, $hourPrefix.'_DD', undef);
         }
-        if ($i > 0 && $hourIndex == 18/$timeResolution) {
+        my $precipitation12h = ::ReadingsVal($d, $hourPrefix.'_RRhc', undef);
+        if ($i > 0 && $hourIndex >= 18/$timeResolution && defined($precipitation12h) && !defined($precipitation)) {
+::Log 3, "PrepareForecastData: 1 ".$hourPrefix.'_RRhc';
           # precipitation between 06:00 and 18:00 for all days except 1st
-          $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");  # RRhc available every 12 hours at 06:00 and 18:00
-          $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");  # Rh00  available every 12 hours at 06:00 and 18:00
+          $precipitation = $precipitation12h;
+          $chanceOfRain = ::ReadingsVal($d, $hourPrefix.'_Rh00', '?');
         }
       }
-      $entry->{windSpeed}     = $windSpeed;
+      $entry->{windSpeed}     = $maxWindSpeed;
       $entry->{windDirection} = $windDirection;
 
       # override precipitation of 1st day: 12 hours before time of 2nd icon
@@ -961,25 +956,32 @@ sub PrepareForecastData($$$$) {
             $day += 1;
             $index = 0;
           }
-        }        
+        }
+        # shift by 1 hour for timeResolution = 1 h
+        if ($timeResolution == 1) {
+          $index += 1;
+        }
         my $hourPrefix = "fc".$day."_".$index;
         if (($index*$timeResolution + 6)%12 == 0) {
+::Log 3, "PrepareForecastData: 2 ".$hourPrefix.'_RRhc';
           # 06:00, 18:00 or 2nd icon shows 2nd day: use 12 hour values
           $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");              # Rh00 available every 12 hours at 06:00 and 18:00
           $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");             # RRhc available every 12 hours at 06:00 and 18:00
         } else {
+::Log 3, "PrepareForecastData: 3a ".$hourPrefix.'_RR6c';
           # combine nearest two 6h values
           my $chanceOfRain1 = ::ReadingsVal($d, $hourPrefix."_R600", "?");          # R600 available every 6 hours
           my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6c", "?");         # RR6c available every 6 hours
           my $previousHourPrefix = $index >= 6/$timeResolution? "fc".$day."_".($index - 6/$timeResolution) : "fc".($day - 1)."_".($index + (24 - 6)/$timeResolution);
+::Log 3, "PrepareForecastData: 3b ".$previousHourPrefix.'_RR6c';
           my $chanceOfRain2 = ::ReadingsVal($d, $previousHourPrefix."_R600", "?");  # R600 available every 6 hours
           my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6c", "?"); # RR6c available every 6 hours
           $chanceOfRain = $chanceOfRain1 eq '?' || $chanceOfRain2 eq '?'? '?' : max($chanceOfRain1, $chanceOfRain2);
           $precipitation = $precipitation1 eq '?' || $precipitation2 eq '?'? '?' : $precipitation1 + $precipitation2;
         }
       }
-      $entry->{chanceOfRain}  = $chanceOfRain;
-      $entry->{precipitation} = $precipitation;
+      $entry->{chanceOfRain}  = defined($chanceOfRain)? $chanceOfRain : '?';
+      $entry->{precipitation} = defined($precipitation)? $precipitation : '?';
 
       # precipitation color
       my $precipitationColor = '';
@@ -990,7 +992,7 @@ sub PrepareForecastData($$$$) {
 
       # wind labels and color
       my ($windSpeedDescription, $windDirectionLabel, $windColor);
-      if (defined($entry->{windSpeed})) {
+      if (defined($entry->{windSpeed}) && defined($entry->{windDirection})) {
         if ($entry->{windSpeed} < 1) {
           $windSpeedDescription = 'Windstille';
           $windDirectionLabel = '';
@@ -1326,6 +1328,9 @@ sub DWD_OpenData_Weblink_Initialize($) {
 #
 # CHANGES
 #
+# 2019-02-02  feature: do not display text for cloud related weather codes 0 ... 3
+#             feature: support forcecastResolution=1
+#
 # 2018-12-30  bugfix: max. wind speed of remaining hours of today in PrepareForecastData
 #
 # 2018-12-17  bugfix: check if start/end readings are defined in PrepareForecastData
@@ -1432,7 +1437,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
     <code>attr MyDWDWeblinkDevice IODev MyDWDDevice</code> <br>
     <code>attr MyDWDWeblinkDevice forecastDays 4</code> <br>
     <code>attr MyDWDWeblinkDevice refreshRate 900</code> <br><br>
-    
+
     <code>define MyDWDWeblink weblink htmlCode { DWD_OpenData_Weblink::AsHtmlH("MyDWDWeblinkDevice") }</code> <br><br>
 
     where "MyDWDDevice" is the name of your DWD_OpenData device <br><br>
@@ -1440,7 +1445,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
 
   <a name="DWD_OpenData_Weblinkattr"></a>
   <b>Attributes</b> <br><br>
-  <ul> 
+  <ul>
       <li>IODev &lt;DWD_OpenData device name&gt;, required, default: none<br>
           Assign an DWD_OpenData device as data source.
       </li><br>
@@ -1457,10 +1462,12 @@ sub DWD_OpenData_Weblink_Initialize($) {
           Adjust texts colors to improve readability.
       </li><br>
   </ul> <br>
-  
+
   <b>Notes:</b> <br><br>
   <ul>
     <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, R600, RRhc, Rh00, ww, wwd and Neff must be enabled in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
+    </li>
+    <li>Set the attribute <i>forecastResolution</i> of the DWD_OpenData device to 1, 3 or 6 hours. Other values are not fully supported.
     </li>
     <li>This module is designed for ease of use and does not require additional web resources - but because of this
         it does not comply to best practices in respect to inline images and inline CSS script.
