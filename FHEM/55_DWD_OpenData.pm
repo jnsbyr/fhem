@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 17981 2018-12-29 10:39:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 17981 2018-02-10 19:50:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -64,7 +64,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.012.002;
+our $VERSION   = 1.012.003;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -1886,7 +1886,7 @@ sub UpdateAlerts($$)
   my $name = $hash->{NAME};
 
   # delete existing alert readings
-  ::CommandDeleteReading(undef, "$name ^a_.*");
+  ::CommandDeleteReading(undef, "$name ^(?!a_count|a_state|a_time)a_.*");
 
   ::readingsBeginUpdate($hash);
 
@@ -2022,13 +2022,18 @@ sub DWD_OpenData_Initialize($) {
 #
 # CHANGES
 #
-# 28.12.2018 (version 1.12.1) jensb
+# 10.02.2019 (version 1.12.3) jensb
+# feature: do not delete readings a_count, a_state, a_time when updating alerts
+#
+# 28.12.2018 (version 1.12.2) jensb
 # bugfix: modified regexp to delete forecast readings on attribute change 
+#
+# 23.12.2018 (version 1.12.1) jensb
+# feature: new attribute alertExcludeEvents
+# feature: delete forecast readings if attribute forecastResolution or forecastStation are changed
 #
 # 20.12.2018 (version 1.12.0) jensb
 # feature: enable 1h forecast resolution
-# feature: new attribute alertExcludeEvents
-# feature: delete forecast readings if attribute forecastResolution or forecastStation are changed
 #
 # 02.12.2018 (version 1.11.0) jensb
 # feature: async processing of forecast enhanced (HttpUtils_NonblockingGet replaced by BlockingCall) to further unload FHEM process
