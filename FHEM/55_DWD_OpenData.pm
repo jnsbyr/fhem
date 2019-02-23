@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 17981 2018-02-10 19:50:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 17981 2018-02-23 17:21:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -11,11 +11,24 @@ DWD Open Data Server.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (C) 2018 Jens B.
+  Copyright (C) 2018 Jens B.
 
-Copyright (C) 2018 JoWiemann (use of HttpUtils instead of LWP::Simple)
+  All rights reserved
 
-All rights reserved
+Use of HttpUtils instead of LWP::Simple:
+
+  Copyright (C) 2018 JoWiemann (FHEM forum post)
+    see https://forum.fhem.de/index.php/topic,83097.msg761015.html#msg761015
+
+Sun position:
+
+  Copyright (C) 2013 Dietmar Ortmann
+  Copyright (C) 2012 Sebastian Stuecker
+    see FHEM/59_Twilight.pm
+  Copyright (C) 2011 aglutz (Symcon forum post)
+    see http://www.ip-symcon.de/forum/threads/14925-Sonnenstand-berechnen-(Azimut-amp-Elevation)
+  Copyright (C) 2011 DocZoid (Twilight.tcl)
+    see http://www.wikimatic.de/wiki/TCLScript:twilight
 
 This script is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -46,6 +59,7 @@ use warnings;
 use Encode;
 use File::Temp qw(tempfile);
 use IO::Uncompress::Unzip qw(unzip $UnzipError);
+use Math::Trig ':pi';
 use POSIX;
 use Scalar::Util qw(looks_like_number);
 use Storable qw(freeze thaw);
@@ -64,7 +78,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.012.003;
+our $VERSION   = 1.013.000;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -72,15 +86,15 @@ our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
 my %forecastPropertyAliases = ( 'TX' => 'Tx', 'TN' => 'Tn', 'TG' => 'Tg', 'TM' => 'Tm' );
 
 my %forecastPropertyPeriods = (
-                               'DD' => 1, 'DRR1' => 1, 'E_DD' => 1, 'E_FF' => 1, 'E_PPP' => 1, 'E_Td' => 1, 'E_TTT' => 1, 'FF' => 1, 'FX1' => 1, 'FX3' => 1, 'FX625' => 1, 'FX640' => 1, 'FX655' => 1, 'FXh' => 1, 'FXh25' => 1, 'FXh40' => 1, 'FXh55' => 1, 'N' => 1, 'N05' => 1, 'Neff' => 1, 'Nh' => 1, 'Nl' => 1, 'Nlm' => 1, 'Nm' => 1, 'PPPP' => 1, 'R101' => 1, 'R102' => 1, 'R103' => 1, 'R105' => 1, 'R107' => 1, 'R110' => 1, 'R120' => 1, 'R130' => 1, 'R150' => 1, 'R600' => 1, 'R602' => 1, 'R610' => 1, 'R650' => 1, 'RR1c' => 1, 'RR1o1' => 1, 'RR1u1' => 1, 'RR1w1' => 1, 'RR3c' => 1, 'RR6c' => 1, 'RRL1c' => 1, 'RRS1c' => 1, 'RRS3c' => 1, 'RRad1' => 1, 'Rad1h' => 1, 'RRhc' => 1, 'Rh00' => 1, 'Rh02' => 1, 'Rh10' => 1, 'Rh50' => 1, 'SunD1' => 1, 'SunD3' => 1, 'T5cm' => 1, 'Td' => 1, 'TTT' => 1, 'VV' => 1, 'VV10' => 1, 'W1W2' => 1, 'WPc11' => 1, 'WPc31' => 1, 'WPc61' => 1, 'WPcd1' => 1, 'WPch1' => 1, 'ww' => 1, 'ww3' => 1, 'wwC' => 1, 'wwC6' => 1, 'wwCh' => 1, 'wwD' => 1, 'wwD6' => 1, 'wwDh' => 1, 'wwF' => 1, 'wwF6' => 1, 'wwFh' => 1, 'wwL' => 1, 'wwL6' => 1, 'wwLh' => 1, 'wwM' => 1, 'wwM6' => 1, 'wwMd' => 1, 'wwMh' => 1, 'wwP' => 1, 'wwP6' => 1, 'wwPd' => 1, 'wwPh' => 1, 'wwS' => 1, 'wwS6' => 1, 'wwSh' => 1, 'wwT' => 1, 'wwT6' => 1, 'wwTd' => 1, 'wwTh' => 1, 'wwZ' => 1, 'wwZ6' => 1, 'wwZh' => 1,
+                               'DD' => 1, 'DRR1' => 1, 'E_DD' => 1, 'E_FF' => 1, 'E_PPP' => 1, 'E_Td' => 1, 'E_TTT' => 1, 'FF' => 1, 'FX1' => 1, 'FX3' => 1, 'FX625' => 1, 'FX640' => 1, 'FX655' => 1, 'FXh' => 1, 'FXh25' => 1, 'FXh40' => 1, 'FXh55' => 1, 'N' => 1, 'N05' => 1, 'Neff' => 1, 'Nh' => 1, 'Nl' => 1, 'Nlm' => 1, 'Nm' => 1, 'PPPP' => 1, 'R101' => 1, 'R102' => 1, 'R103' => 1, 'R105' => 1, 'R107' => 1, 'R110' => 1, 'R120' => 1, 'R130' => 1, 'R150' => 1, 'R600' => 1, 'R602' => 1, 'R610' => 1, 'R650' => 1, 'RR1c' => 1, 'RR1o1' => 1, 'RR1u1' => 1, 'RR1w1' => 1, 'RR3c' => 1, 'RR6c' => 1, 'RRL1c' => 1, 'RRS1c' => 1, 'RRS3c' => 1, 'RRad1' => 1, 'Rad1h' => 1, 'RRhc' => 1, 'Rh00' => 1, 'Rh02' => 1, 'Rh10' => 1, 'Rh50' => 1, 'SunAz' => 1, 'SunD1' => 1, 'SunD3' => 1, 'SunEl' => 1, 'SunUp' => 1, 'T5cm' => 1, 'Td' => 1, 'TTT' => 1, 'VV' => 1, 'VV10' => 1, 'W1W2' => 1, 'WPc11' => 1, 'WPc31' => 1, 'WPc61' => 1, 'WPcd1' => 1, 'WPch1' => 1, 'ww' => 1, 'ww3' => 1, 'wwC' => 1, 'wwC6' => 1, 'wwCh' => 1, 'wwD' => 1, 'wwD6' => 1, 'wwDh' => 1, 'wwF' => 1, 'wwF6' => 1, 'wwFh' => 1, 'wwL' => 1, 'wwL6' => 1, 'wwLh' => 1, 'wwM' => 1, 'wwM6' => 1, 'wwMd' => 1, 'wwMh' => 1, 'wwP' => 1, 'wwP6' => 1, 'wwPd' => 1, 'wwPh' => 1, 'wwS' => 1, 'wwS6' => 1, 'wwSh' => 1, 'wwT' => 1, 'wwT6' => 1, 'wwTd' => 1, 'wwTh' => 1, 'wwZ' => 1, 'wwZ6' => 1, 'wwZh' => 1,
                                'PEvap' => 24, 'PSd00' => 24, 'PSd30' => 24, 'PSd60' => 24, 'RRdc' => 24, 'RSunD' => 24, 'Rd00' => 24, 'Rd02' => 24, 'Rd10' => 24, 'Rd50' => 24, 'SunD' => 24, 'Tg' => 24, 'Tm' => 24, 'Tn' => 24, 'Tx' => 24
                               );
 
 my %forecastDefaultProperties = (
-                                 'Tg' => 1, 'Tn' => 1, 'Tx' => 1, 'DD' => 1, 'FX1' => 1, 'Neff' => 1, 'RR6c' => 1, 'RRhc' => 1, 'Rh00' => 1, 'TTT' => 1, 'ww' => 1
+                                 'Tg' => 1, 'Tn' => 1, 'Tx' => 1, 'DD' => 1, 'FX1' => 1, 'Neff' => 1, 'RR6c' => 1, 'R600' => 1, 'RRhc' => 1, 'Rh00' => 1, 'TTT' => 1, 'ww' => 1, 'SunUp' => 1
                                 );
 
-# 1 = temperature in K, 2 = integer value, 3 = wind speed in m/s, 4 = pressure in Pa
+# conversion of DWD value to: 1 = temperature in K, 2 = integer value, 3 = wind speed in m/s, 4 = pressure in Pa
 my %forecastPropertyTypes = (
                              'Tx' => 1, 'Tn' => 1, 'Tg' => 1, 'Tm'=> 1, 'Td'  => 1, 'T5cm'  => 1, 'TTT'   => 1,
                              'DD' => 2, 'Neff' => 2, 'Nh' => 2, 'Nl' => 2, 'Nlm' => 2, 'Nm' => 2, 'Rh00' => 2, 'ww'  => 2, 'ww3' => 2, 'WPc11' => 2, 'WPc31' => 2, 'WPc61' => 2, 'WPch1' => 2, 'WPcd1' => 2,
@@ -791,6 +805,110 @@ sub IsCommuneUnionWarncellId($) {
          || $warncellId == UPDATE_COMMUNEUNIONS || $warncellId == UPDATE_ALL? 1 : 0;
 }
 
+=head2 SunPosition(;$$$$)
+
+Calculate the azimuth and elevation of the sun for the given time and location.
+
+Background: see https://en.wikipedia.org/wiki/Position_of_the_Sun
+
+=over
+
+=item * param time: epoch time [s], optional, default: now
+
+=item * param longitude: geographic longitude [deg], optional, default: global longitude or Frankfurt, Germany
+
+=item * param latitude: geographic latitude [deg], optional, default: global latitude or Frankfurt, Germany
+
+=item * return array of azimuth and elevation [deg]
+
+=back
+
+=cut
+
+sub SunPosition(;$$$$) {
+  my ($time, $longitude, $latitude) = @_;
+
+  if (!defined($time)) {
+    $time = time();
+  }
+
+  if (!defined($longitude) || !defined($latitude)) {
+    # undefined: use Frankfurt, Germany
+    $longitude = ::AttrVal("global", "longitude", "8.686");
+    $latitude  = ::AttrVal("global", "latitude", "50.112");
+  }
+
+  # Convert epoch time into its date/time parts
+  my ($seconds, $minutes, $hours, $day, $month, $year, $wday, $yday, $isdst) = gmtime($time);
+  $month++;
+  $year += 100;
+
+  # Convert day time into decimal hours
+  my $timeAsHours = $hours + $minutes/60.0 + $seconds/3600.0;
+
+  # Calculate difference in days between the current day and
+  # noon 1 January 2000 Universal Time
+  my $yearsAfter2000 = $year;
+  my $aux1 = (14 - ($month))/12;
+  my $aux2 = $month + 12*$aux1 - 3;
+  my $aux3 = (153 * $aux2 + 2)/5;
+  my $aux4 = 365 * ($yearsAfter2000 - $aux1);
+  my $aux5 = ($yearsAfter2000 - $aux1)/4;
+  my $elapsedDays = ($day + $aux3 + $aux4 + $aux5 + 59) - 0.5 + $timeAsHours/24.0;
+
+  # Calculate ecliptic coordinates (ecliptic longitude and obliquity of the
+  # ecliptic in radians but without limiting the angle to 2*pi
+  # (i.e., the result may be greater than 2*pi)
+  my $omega             = 2.1429    - 0.0010394594   * $elapsedDays;
+  my $meanLongitude     = 4.8950630 + 0.017202791698 * $elapsedDays; # [rad]
+  my $meanAnomaly       = 6.2400600 + 0.0172019699   * $elapsedDays;
+  my $eclipticLongitude = $meanLongitude + 0.03341607 * sin($meanAnomaly) + 0.00034894 * sin(2*$meanAnomaly ) - 0.0001134 - 0.0000203 * sin($omega);
+  my $eclipticObliquity = 0.4090928 - 6.2140e-9 * $elapsedDays +0.0000396 * cos($omega);
+
+  # Calculate celestial coordinates (right ascension and declination) in radians
+  # but without limiting the angle to 2*pi (i.e., the result may be
+  # greater than 2*pi)
+  my $sinEclipticLongitude = sin($eclipticLongitude);
+  my $y1 = cos($eclipticObliquity)*$sinEclipticLongitude;
+  my $x1 = cos($eclipticLongitude);
+  my $rightAscension = atan2($y1, $x1);
+  if ($rightAscension < 0.0) {
+    $rightAscension = $rightAscension + pi2;
+  }
+  my $declination = asin(sin($eclipticObliquity)*$sinEclipticLongitude);
+
+  # Calculate local coordinates (azimuth [deg] and zenith angle [rad])
+  my $rad = (pi/180);
+  my $greenwichMeanSiderealTime = 6.6974243242 + 0.0657098283*$elapsedDays + $timeAsHours;
+  my $localMeanSiderealTime = ($greenwichMeanSiderealTime*15 + $longitude)*$rad;
+  my $hourAngle = $localMeanSiderealTime - $rightAscension;
+  my $cosHourAngle = cos($hourAngle);
+  my $latitudeRadians = $latitude*$rad;
+  my $cosLatitude = cos($latitudeRadians);
+  my $sinLatitude = sin($latitudeRadians);
+  my $zenithAngle = (acos($cosLatitude*$cosHourAngle*cos($declination) + sin($declination)*$sinLatitude));
+  my $y = -sin($hourAngle);
+  my $x = tan($declination )*$cosLatitude - $sinLatitude*$cosHourAngle;
+  my $azimuth = atan2($y, $x);
+  if ($azimuth < 0.0) {
+    $azimuth = $azimuth + pi2;
+  }
+  $azimuth = $azimuth/$rad;
+  $azimuth = sprintf("%0.1f", $azimuth); # round(1)
+
+  # Parallax correction of zenith angle [deg]
+  my $meanEarthRadius = 6371.01; # [km]
+  my $astronomicalUnit = 149597890; # [km]
+  my $parallax = ($meanEarthRadius/$astronomicalUnit)*sin($zenithAngle);
+  $zenithAngle = ($zenithAngle + $parallax)/$rad;
+
+  # Elevation [deg]
+  my $elevation = 90 - $zenithAngle;
+  $elevation = sprintf("%0.1f", $elevation); # round(1)
+
+  return ($azimuth, $elevation);
+}
+
 =head2 RotateForecast($$;$)
 
 =over
@@ -1020,6 +1138,7 @@ sub ProcessForecast($$$)
 
   my %forecast;
   my $relativeDay = 0;
+  my @coordinates;
   eval {
     if (defined($httpError) && length($httpError) > 0) {
       die "error retrieving URL '$url': $httpError";
@@ -1111,6 +1230,7 @@ sub ProcessForecast($$$)
 
       # extract time data
       my %timeProperties;
+      my ($longitude, $latitude);
       my $placemarkNodeList = $dom->getElementsByLocalName('Placemark');
       if ($placemarkNodeList->size()) {
         my $placemarkNode = $placemarkNodeList->get_node(1);
@@ -1130,7 +1250,7 @@ sub ProcessForecast($$$)
                   my $textContent = $extendedDataChildNode->nonBlankChildNodes()->get_node(1)->textContent();
                   $textContent =~ s/^\s+|\s+$//g; # trim outside
                   $textContent =~ s/\s+/ /g; # trim inside
-                  my @values = split(' ',$textContent);
+                  my @values = split(' ', $textContent);
                   $timeProperties{$elementName} = \@values;
                 }
               }
@@ -1138,9 +1258,33 @@ sub ProcessForecast($$$)
           } elsif ($placemarkChildNode->nodeName() eq 'kml:Point') {
             my $coordinates = $placemarkChildNode->nonBlankChildNodes()->get_node(1)->textContent();
             $header{coordinates} = $coordinates;
+            ($longitude, $latitude) = split(',', $coordinates);
           }
         }
       }
+
+      # calculate sun position properties for each timestamp
+      if (defined($longitude) && defined($latitude)) {
+        my @azimuths;
+        my @elevations;
+        my @sunups;
+        foreach my $timestamp (@timestamps) {
+          my ($azimuth, $elevation) = SunPosition($timestamp, $longitude, $latitude);
+          push(@azimuths, $azimuth);     # [deg]
+          push(@elevations, $elevation); # [deg]
+          push(@sunups, $elevation >= -12? 1 : 0); # nautical twilight
+        }
+        if (defined($selectedProperties{SunAz})) {
+          $timeProperties{SunAz} = \@azimuths;
+        }
+        if (defined($selectedProperties{SunEl})) {
+          $timeProperties{SunEl} = \@elevations;
+        }
+        if (defined($selectedProperties{SunUp})) {
+          $timeProperties{SunUp} = \@sunups;
+        }
+      }
+
       $forecast{timeProperties} = \%timeProperties;
     }
     $forecast{header} = \%header;
@@ -1342,7 +1486,7 @@ sub UpdateForecast($$)
     my $forecastTime = $timestamps->[$i];
     my ($fcSec, $fcMin, $fcHour, $fcMday, $fcMon, $fcYear, $fcWday, $fcYday, $fcIsdst) = Localtime($hash, $forecastTime);
     my $forecastDate = Timelocal($hash, 0, 0, 0, $fcMday, $fcMon, $fcYear);
-    $relativeDay = sprintf("%.0f", ($forecastDate - $today)/(24*60*60)); # Perl equivalent for round()
+    $relativeDay = sprintf("%.0f", ($forecastDate - $today)/(24*60*60)); # round()
     if ($relativeDay > $forecastDays) {
       # max. number of days processed, done
       last;
@@ -1378,7 +1522,7 @@ sub UpdateForecast($$)
             if ($forecastPropertyType == 1) {
               $value -= 273.15; # K -> °C
               if (length($value) > 6) {
-                $value = sprintf('%0.2f', $value); # round to compensate floating point granularity
+                $value = sprintf('%0.2f', $value); # round(2) to compensate floating point granularity
               }
             }
             elsif ($forecastPropertyType == 2) {
@@ -2022,11 +2166,14 @@ sub DWD_OpenData_Initialize($) {
 #
 # CHANGES
 #
+# 23.02.2019 (version 1.13.0) jensb
+# feature: new sun position readings SunAz, SunEl and SunUp
+#
 # 10.02.2019 (version 1.12.3) jensb
 # feature: do not delete readings a_count, a_state, a_time when updating alerts
 #
 # 28.12.2018 (version 1.12.2) jensb
-# bugfix: modified regexp to delete forecast readings on attribute change 
+# bugfix: modified regexp to delete forecast readings on attribute change
 #
 # 23.12.2018 (version 1.12.1) jensb
 # feature: new attribute alertExcludeEvents
@@ -2292,6 +2439,14 @@ sub DWD_OpenData_Initialize($) {
              <li>Nm [%]       - medium level cloud cover below 7000 m</li>
              <li>Nh [%]       - high level cloud cover above 7000 m</li>
              <li>PPPP [hPa]   - pressure equivalent at sea level</li>
+          </ul>
+      </li>
+
+      <li>extra hour properties (not provided by the DWD but calculated by the FHEM module)
+          <ul>
+             <li>SunAz [°] - sun azimuth</li>
+             <li>SunEl [°] - sun elevation</li>
+             <li>SunUp     - sun up (0/1) based on nautical twilight (-12 °)</li>
           </ul>
       </li>
   </ul> <br>
