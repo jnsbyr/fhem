@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201500 2018-02-02 09:24:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201500 2018-02-23 19:56:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.015.000;
+our $VERSION   = 2.016.000;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -540,38 +540,6 @@ sub GetForecastCssH()
 
 =head1 MODULE FUNCTIONS
 
-=head2 IsDay($$)
-
-=over
-
-=item * param time:     epoch time
-
-=item * param altitude: see documentation of module SUNRISE_EL
-
-=item * return 1 if sun is up at given time, otherwise 0
-
-=back
-
-note: result is only defined for location defined in FHEM global
-
-=cut
-
-sub IsDay($$) {
-  my ($time, $altitude) = @_;
-
-  my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($time);
-  my $t = ($hour*60 + $min)*60 + $sec;
-
-  my (undef, $srHour, $srMin, $srSec, undef) = ::GetTimeSpec(::sunrise_abs_dat($time, $altitude));
-  my $sunrise = ($srHour*60 + $srMin)*60 + $srSec;
-
-  my (undef, $ssHour, $ssMin, $ssSec, undef) = ::GetTimeSpec(::sunset_abs_dat($time, $altitude));
-  my $sunset = ($ssHour*60 + $ssMin)*60 + $ssSec;
-
-  #Log 3, "IsDay: $hour:$min:$sec  $srHour:$srMin:$srSec $ssHour:$ssMin:$ssSec";
-
-  return $t >= $sunrise && $t <= $sunset;
-}
 
 =head2 IsActive($$$)
 
@@ -639,7 +607,7 @@ get FHEM weather icon for weather code
 
 =item * param cloudCover:  [1/8]
 
-=item * param time:        epoch time or undef for day or 1 for night, scalar, optional
+=item * param day:         0 = night, 1 = day, optional, default: day
 
 =item * return HTML string
 
@@ -648,9 +616,13 @@ get FHEM weather icon for weather code
 =cut
 
 sub GetWeatherIconTag($$;$) {
-  my ($weatherCode, $cloudCover, $time) = @_;
+  my ($weatherCode, $cloudCover, $day) = @_;
 
-  my $day = !defined($time) || ($time > 1 && IsDay($time, "REAL"));
+  if (!defined($day)) {
+    $day = 1;
+  }
+
+#::Log 3, "GetWeatherIconTag: weatherCode=".$weatherCode." cloudCover=".$cloudCover." day=".$day;
 
   my $iconName = "na";
   if (defined($weatherCode)) {
@@ -844,9 +816,6 @@ sub PrepareForecastData($$$$) {
     }
 
     # weather description
-    $date = ::ReadingsVal($d, $dayPrefix."_date", "1970-01-01");
-    $time = ::ReadingsVal($d, $hourPrefix."_time", "00:00");
-    my $epoch = ::time_str2num($date.' '.$time.':00');
     my $code = ::ReadingsVal($d, $hourPrefix."_ww", "-1");
     $entry->{description} = "";
     if ($code > 0 && $code > 3) {
@@ -855,7 +824,8 @@ sub PrepareForecastData($$$$) {
 
     # weather icon
     my $cloudCover = ::ReadingsVal($d, $hourPrefix."_Neff", undef);
-    $entry->{iconImageTag} = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), 8*$cloudCover/100, $epoch);
+    my $sunUp = ::ReadingsVal($d, $hourPrefix."_SunUp", undef);
+    $entry->{iconImageTag} = GetWeatherIconTag(::ReadingsVal($d, $hourPrefix."_ww", undef), 8*$cloudCover/100, $sunUp);
 
     # weather alert key
     $entry->{alertKey} = $i < 0? 'NOW' : "$day-$index";
@@ -931,7 +901,6 @@ sub PrepareForecastData($$$$) {
         }
         my $precipitation12h = ::ReadingsVal($d, $hourPrefix.'_RRhc', undef);
         if ($i > 0 && $hourIndex >= 18/$timeResolution && defined($precipitation12h) && !defined($precipitation)) {
-::Log 3, "PrepareForecastData: 1 ".$hourPrefix.'_RRhc';
           # precipitation between 06:00 and 18:00 for all days except 1st
           $precipitation = $precipitation12h;
           $chanceOfRain = ::ReadingsVal($d, $hourPrefix.'_Rh00', '?');
@@ -963,17 +932,14 @@ sub PrepareForecastData($$$$) {
         }
         my $hourPrefix = "fc".$day."_".$index;
         if (($index*$timeResolution + 6)%12 == 0) {
-::Log 3, "PrepareForecastData: 2 ".$hourPrefix.'_RRhc';
           # 06:00, 18:00 or 2nd icon shows 2nd day: use 12 hour values
           $chanceOfRain = ::ReadingsVal($d, $hourPrefix."_Rh00", "?");              # Rh00 available every 12 hours at 06:00 and 18:00
           $precipitation = ::ReadingsVal($d, $hourPrefix."_RRhc", "?");             # RRhc available every 12 hours at 06:00 and 18:00
         } else {
-::Log 3, "PrepareForecastData: 3a ".$hourPrefix.'_RR6c';
           # combine nearest two 6h values
           my $chanceOfRain1 = ::ReadingsVal($d, $hourPrefix."_R600", "?");          # R600 available every 6 hours
           my $precipitation1 = ::ReadingsVal($d, $hourPrefix."_RR6c", "?");         # RR6c available every 6 hours
           my $previousHourPrefix = $index >= 6/$timeResolution? "fc".$day."_".($index - 6/$timeResolution) : "fc".($day - 1)."_".($index + (24 - 6)/$timeResolution);
-::Log 3, "PrepareForecastData: 3b ".$previousHourPrefix.'_RR6c';
           my $chanceOfRain2 = ::ReadingsVal($d, $previousHourPrefix."_R600", "?");  # R600 available every 6 hours
           my $precipitation2 = ::ReadingsVal($d, $previousHourPrefix."_RR6c", "?"); # RR6c available every 6 hours
           $chanceOfRain = $chanceOfRain1 eq '?' || $chanceOfRain2 eq '?'? '?' : max($chanceOfRain1, $chanceOfRain2);
@@ -1328,6 +1294,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 #
 # CHANGES
 #
+# 2019-02-23  feature: location specific day/night detection based on new reading SunUp
+#
 # 2019-02-02  feature: do not display text for cloud related weather codes 0 ... 3
 #             feature: support forcecastResolution=1
 #
@@ -1465,14 +1433,12 @@ sub DWD_OpenData_Weblink_Initialize($) {
 
   <b>Notes:</b> <br><br>
   <ul>
-    <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, R600, RRhc, Rh00, ww, wwd and Neff must be enabled in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
+    <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, R600, RRhc, Rh00, ww, wwd, Neff, SunUp must be enabled in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
     </li>
     <li>Set the attribute <i>forecastResolution</i> of the DWD_OpenData device to 1, 3 or 6 hours. Other values are not fully supported.
     </li>
     <li>This module is designed for ease of use and does not require additional web resources - but because of this
         it does not comply to best practices in respect to inline images and inline CSS script.
-    </li>
-    <li>Known issues: day/night detection will only work properly if the forecast station timezone and FHEM timezone are identical.
     </li>
   </ul> <br>
 </ul>
