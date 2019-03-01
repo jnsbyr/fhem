@@ -1,5 +1,5 @@
-# -----------------------------------------------------------------------------
-# $Id: 40_RTL433.pm 3 2018-01-01 13:38:00Z jensb $
+﻿# -----------------------------------------------------------------------------
+# $Id: 40_RTL433.pm 4 2019-03-01 17:56:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -45,11 +45,14 @@ use threads::shared;
 use Time::HiRes qw(usleep);
 use Blocking;
 
-use constant COMMAND => '/usr/local/bin/rtl_433 -l';
+use constant COMMAND => '/usr/local/bin/rtl_433';
 
 my %sets = (
   'bitLevel' => '5000',
 );
+
+my $readerMessage = '';
+
 
 =head1 FUNCTIONS
 
@@ -106,9 +109,10 @@ sub RTL433_Reader($)
 
   RemoveInternalTimer($hash); # child does not need polling
 
-  my $bitLevel = AttrVal($name, 'bitLevel', '5000');
-  my $extraArguments = AttrVal($name, 'extraArguments', '-R12'); # R12=Oregon Scientific
-  my $pid = open(FH, COMMAND . $bitLevel . " " . $extraArguments . " 2>&1|");
+  my $bitLevel = AttrVal($name, 'bitLevel', undef);
+  my $extraArguments = AttrVal($name, 'extraArguments', undef);
+  my $command = COMMAND . (defined($bitLevel)? '-l ' . $bitLevel : '') . ' ' . (defined($extraArguments)? $extraArguments : '') . ' 2>&1|';
+  my $pid = open(FH, $command);
   if (defined($pid))
   {
     BlockingInformParent("RTL433_ReaderEvent", [$name, 'start', $pid], 0);
@@ -116,7 +120,14 @@ sub RTL433_Reader($)
     {
       my $message = $_;
       $message =~ s/\n/ /g; # replace newline with space
-      BlockingInformParent("RTL433_ReaderEvent", [$name, 'data', $message], 0);
+      $readerMessage .= $message;
+      #Log3 'RTL433', 5, "RTL433_Reader: >$readerMessage<";
+      if ($readerMessage =~ /(\. $|\! $|_ _  $)/)
+      {
+        $readerMessage =~ s/_ _ //g; # remove underscore separator
+        BlockingInformParent("RTL433_ReaderEvent", [$name, 'data', $readerMessage], 0);
+        $readerMessage = '';
+      }
     }
     BlockingInformParent("RTL433_ReaderEvent", [$name, 'stop', $pid], 0);
   }
@@ -151,7 +162,7 @@ sub RTL433_ReaderEvent($$;$)
   my ($name, $event, $params) = @_;
   my $hash = $defs{$name};
 
-  Log3 $hash, 5, "$name: RTL433_ReaderEvent $event $params";
+  Log3 $hash, 5, "$name: RTL433_ReaderEvent '$event' >$params<";
 
   if ($event eq 'data')
   {
@@ -507,8 +518,9 @@ sub RTL433_Read($$)
   my ($hash, $message) = @_;
   my $name = $hash->{NAME};
 
-  $message =~ s/^\s+|\s+$//g;
-  Log3 $name, 5, "$name: RTL433_Read received $message";
+  $message =~ s/^\s+|\s+$//g; # remove spaces at beginning and end
+  $message =~ s/\s+/ /g; # remove multiple consecutive spaces
+  Log3 $name, 5, "$name: RTL433_Read received >$message<";
   if (defined($message) && $hash->{PROCESSED} ne $message)
   {
     my $processed = 0;
@@ -634,21 +646,25 @@ sub RTL433_Attr(@)
 #
 # CHANGES
 #
-# 27.09.2015 jnsbyr
+# 27.09.2015 jensb
 #   method _Reader: decode Oregon Scientific only
 #   method _Read: added humidity offset support
 #
-# 15.11.2015 jnsbyr
+# 15.11.2015 jensb
 #   method _ReaderEvent: return undef to prevent FHEM sending reply
 #
-# 15.12.2015 jnsbyr
+# 15.12.2015 jensb
 #   method _Read: added humidity scale support
 #
-# 27.04.2016 jnsbyr
+# 27.04.2016 jensb
 #   device filtering and value extraction made configurable
 #
-# 01.01.2018 jnsbyr
+# 01.01.2018 jensb
 #   rtl_433 command line arguments made configurable
+#
+# 17.02.2019 jensb
+#   support new output format of rtl_433 version 18
+#   support starting rtl_433 without command line arguments if no attributes are set
 #
 # -----------------------------------------------------------------------------
 
@@ -659,7 +675,9 @@ sub RTL433_Attr(@)
 
 =item device
 
-=item summary run rtl_433 and parse output into readings
+=item summary process output screen scraper wrapper for rtl_433
+
+=item summary_DE process output Screenscraper Wrapper für rtl_433
 
 =back
 
@@ -670,48 +688,69 @@ sub RTL433_Attr(@)
 <a name="RTL433"></a>
 <h3>RTL433</h3>
 <ul>
-  Tested with GiXa Technology DVB-T/DAB/FM USB 2.0 Stick (Realtek RTL2832U
-  demodulator + Rafael Micro R820T tuner) on Raspberry Pi 2.0 / Raspbian 3.18. <br><br>
+  Tested with GiXa Technology DVB-T/DAB/FM USB 2.0 Stick (Realtek RTL2832U demodulator + Rafael Micro R820T tuner) on Raspberry Pi 2.0 / Raspbian 9 / RTL_433 18 <br><br>
 
-  To use this module you need to install:
+  To use this module you need to install: <br><br>
   <ul>
     <li> <a href="https://osmocom.org/projects/rtl-sdr/wiki/Rtl-sdr">rtl-sdr</a> </li>
     <li> <a href="https://github.com/merbanan/rtl_433.git">rtl_433</a> </li>
   </ul> <br>
 
-  Notes:
+  On Rasbian 9 (Strech) you can use the following lines to perform the installation of rtl-sdr and rtl_433:
+  
+  <pre><code>
+  apt-get install libtool libusb-1.0.0-dev librtlsdr-dev rtl-sdr autoconf cmake
+  git clone git://github.com/merbanan/rtl_433
+  cd rtl_433
+  mkdir build
+  cd build
+  cmake ../
+  make
+  sudo make install
+  sudo usermod -aG plugdev fhem
+  </code></pre>
+  
+  Notes: <br><br>
   <ul>
     <li> Low cost alternative for some RFXCOM applications.</li> <br>
 
-    <li> Because rtl_433 has no sensor independent output format you need to adjust
-         the property matching by setting the <code>sensors</code> attribute. In some
-         cases you should also consider patching rtl_433 to adjust the output format to
-         your requirements.</li> <br>
+    <li> Because rtl_433 has no sensor independent output format you need to adjust the property matching by setting the <code>sensors</code> attribute.</li> <br>
 
-    <li> Receiver sensitivity range is slightly less than with a proprietary 433 MHz receiver.
-         Antenna position and rtl_433 bit level must be adjusted individually for best results.
-         To receive all available transmitters damping transmitters that are nearest to
-         antenna should be considered.</li> <br>
+    <li> Receiver sensitivity range is slightly less than with a proprietary 433 MHz receiver. Antenna position and rtl_433 bit level must be adjusted individually for best results using the attribute <code>bitLevel</code>. To receive all available transmitters damping strong transmitters that are nearest to the antenna can be tested.</li> <br>
 
-    <li> This module is a FHEM wrapper for the rtl_433 application that is started as a
-         separate process. It is not suitable for low powered platforms. Running rtl_433
-         loads one Raspberry Pi 2.0 CPU core permanently at approximately 35% for processing
-         the samples from the radio. Load can be slightly reduced by enabling only the required
-         number of decoders with the <i>-R</i> parameter of rtl_433 using the
-         <code>extraArguments</code> attribute.</li> <br>
-  </ul> <br>
+    <li> This module is a FHEM wrapper for the rtl_433 application that is started as a separate process. Running rtl_433 may case considerable load for processing the samples from the radio. The load can be slightly reduced by enabling only the required number of decoders with the <i>-R</i> parameter of rtl_433 using the   attribute <code>extraArguments</code>.</li> <br>
+  </ul>
 
-  Example: 
-<pre><code>define RTL433 RTL433
-attr RTL433 bitLevel 5000
-attr RTL433 extraArguments -R12 -R16
-attr RTL433 sensors { sensor1 => { device => 'THGR122N.*0x12', \
-                                   readings => [ 'Battery', 'Temperature', 'Humidity' ], \
-                                   pattern => 'channel.*rid.*battery (\w+).*Temp: (-?[\d\.]+).*Humidity: ([\d\.]+)', }, \
-                      sensor2 => { device => 'Alecto.*Rain.*123', \
-                                   readings => [ 'Rain', 'Battery' ], \
-                                   pattern => 'Rain ([\d\.]+) mm.*Battery (\w+)', },
-} </code></pre>
+  Example:
+
+  <pre><code>
+  define RTL433 RTL433
+  attr RTL433 bitLevel 5000
+  attr RTL433 extraArguments -R12 -R16
+  attr RTL433 sensors { sensor1 => { device => 'model : THGR122N House Code: 50 Channel : 1', \
+                                     readings => [ 'Battery', 'Temperature', 'Humidity' ], \
+                                     pattern => '^time.*Battery : (\w+) Temperature: (-?[\d\.]+) C Humidity : ([\d\.]+).* %$', }, \
+                        sensor2 => { device => 'model : AlectoV1 Rain Sensor House Code: 15 Channel : 0', \
+                                     readings => [ 'Battery', 'Rain' ], \
+                                     pattern => '^time.*Battery : (\w+) Total Rain: ([\d\.]+) mm', }, \
+                      }
+  </code></pre>
+
+  The attribute <code>sensors</code> is a hash of hashes. Each entry defines a sensor and the key of each entry is used as a prefix for the sensor readings. The following elements are supported for a sensor definition: <br><br>
+  <ul>
+    <li>device - regexp to select the device, required</li> <br>
+
+    <li>readings - array of readings names, will be appended to sensor name, required</li> <br>
+
+    <li>pattern - regexp to extract the reading values, number of parts must match number of readings, required</li> <br>
+
+    <li>scale&lt;readingPostfix&gt; - scale factor applied to raw value, optional, default 1</li> <br>
+
+    <li>offset&lt;readingPostfix&gt; - offset applied to raw value after scaling, optional, default 0</li> <br>
+  </ul>
+
+  To test the regexp for the sub-attributes <code>device</code> and <code>pattern</code> use the content of the internal reading <code>UNPROCESSED</code>. You should also set the attribute <code>verbose</code> to 5 and check the FHEM log file. If the configuration for a sensor is OK the data of the sensor will be assigned to the internal <code>PROCESSED</code>.
+
 </ul> <br>
 
 =end html
