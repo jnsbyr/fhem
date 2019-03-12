@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 17981 2018-03-04 21:11:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 17981 2018-03-11 19:12:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -83,7 +83,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.014.000;
+our $VERSION   = 1.014.001;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -835,7 +835,7 @@ sub ParseKMLTime($) {
 
 sub IsCommuneUnionWarncellId($) {
   my ($warncellId) = @_;
-  return int($warncellId/100000000) == 5 || int($warncellId/100000000) == 8
+  return int($warncellId/100000000) == 5 || int($warncellId/100000000) == 7 || int($warncellId/100000000) == 8
          || $warncellId == UPDATE_COMMUNEUNIONS || $warncellId == UPDATE_ALL? 1 : 0;
 }
 
@@ -2125,7 +2125,7 @@ sub GetAlertsStart($)
   # give main process time to execute
   usleep(100);
 
-  # get communion (5, 8) or district (1, 9) alerts for Germany from DWD server
+  # get communion (5, 7, 8) or district (1, 9) alerts for Germany from DWD server
   my $communeUnion = IsCommuneUnionWarncellId($warncellId);
   my $alertLanguage = ::AttrVal($name, 'alertLanguage', 'DE');
   my $url = 'https://opendata.dwd.de/weather/alerts/cap/'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_CELLS_STAT/Z_CAP_C_EDZW_LATEST_PVW_STATUS_PREMIUMCELLS_'.($communeUnion? 'COMMUNEUNION' : 'DISTRICT').'_'.$alertLanguage.'.zip';
@@ -2635,6 +2635,9 @@ sub DWD_OpenData_Initialize($) {
 #
 # CHANGES
 #
+# 11.03.2019 (version 1.14.1) jensb
+# feature: support warncells that begin with 7
+#
 # 04.03.2019 (version 1.14.0) jensb
 # coding: replaced Julian date calculation
 # change: SunUp based on upper solar limb instead of nautical twilight
@@ -2850,7 +2853,7 @@ sub DWD_OpenData_Initialize($) {
   <ul> <br>
       <li>alertArea &lt;warncell id&gt;, default: none<br>
           Setting alertArea enables automatic updates of the alerts cache every 15 minutes.<br>
-          A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 8 (communeunion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
+          A warncell id is a 9 digit numeric value from the <a href="https://www.dwd.de/DE/leistungen/opendata/help/warnungen/cap_warncellids_csv.csv">Warncell-IDs for CAP alerts catalogue</a>. Supported ids start with 7 and 8 (communeunion), 1 and 9 (district) or 5 (coast). To verify that alerts are provided for the warncell id you selected you should consult another source, wait for an alert situation and compare.
       </li>
       <li>alertLanguage [DE|EN], default: DE<br>
           Language of descriptive alert properties.
