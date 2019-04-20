@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 18941 2019-03-17 11:02:27Z jensb $
+# $Id: 55_DWD_OpenData.pm 18941 2019-04-17 17:48:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -67,7 +67,7 @@ use Time::Local;
 use Time::Piece;
 
 require Exporter;
-our $VERSION   = 1.000.000;
+our $VERSION   = 1.000.001;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AzimuthElevation RiseSet);
 our @EXPORT_OK = qw(EpochToJulianDate JulianDateToEpoch);
@@ -105,7 +105,7 @@ simplified algorithm, accurate to within 0.5 minutes of arc for the year 1999-20
 
 =item * param time: epoch time [s], optional, default: now
 
-=item * return Greenwich mean sideral date
+=item * return Greenwich mean sideral date [h]
 
 =back
 
@@ -243,25 +243,24 @@ sub AzimuthElevation(;$$$) {
   my $greenwichMeanSiderealDate = EpochToGreenwichMeanSideralDate($epoch);
   my $localMeanSiderealDateRadians = ($greenwichMeanSiderealDate*15 + $longitudeEast)*$rad;
   my $hourAngleRadians = $localMeanSiderealDateRadians - $rightAscensionRadians;
-  my $cosHourAngle = cos($localMeanSiderealDateRadians);
+  my $cosHourAngle = cos($hourAngleRadians);
   my $latitudeRadians = $latitudeNorth*$rad;
   my $cosLatitude = cos($latitudeRadians);
   my $sinLatitude = sin($latitudeRadians);
-  my $zenithAngle = acos($cosLatitude*$cosHourAngle*cos($declinationRadians) + sin($declinationRadians)*$sinLatitude);
+  my $zenithAngleRadians = acos($cosLatitude*$cosHourAngle*cos($declinationRadians) + sin($declinationRadians)*$sinLatitude);
   my $y = -sin($hourAngleRadians);
   my $x = tan($declinationRadians)*$cosLatitude - $sinLatitude*$cosHourAngle;
-  my $azimuth = atan2($y, $x);
-  if ($azimuth < 0.0) {
-    $azimuth = $azimuth + pi2;
+  my $azimuthRadians = atan2($y, $x);
+  if ($azimuthRadians < 0.0) {
+    $azimuthRadians = $azimuthRadians + pi2;
   }
-  $azimuth = $azimuth/$rad;
-  $azimuth = sprintf("%0.1f", $azimuth); # round(1)
+  my $azimuth = sprintf("%0.1f", $azimuthRadians/$rad); # round(1)
 
   # Parallax correction of zenith angle [deg]
   my $meanEarthRadius = 6371.01; # [km]
   my $astronomicalUnit = 149597890; # [km]
-  my $parallax = ($meanEarthRadius/$astronomicalUnit)*sin($zenithAngle);
-  $zenithAngle = ($zenithAngle + $parallax)/$rad;
+  my $parallax = ($meanEarthRadius/$astronomicalUnit)*sin($zenithAngleRadians);
+  my $zenithAngle = ($zenithAngleRadians + $parallax)/$rad;
 
   # Elevation [deg]
   my $elevation = 90 - $zenithAngle;
@@ -406,7 +405,7 @@ see https://en.wikipedia.org/wiki/Sunrise_equation
 
 sub Transit($$$) {
   my ($jd, $meanSolarAnomalyRadians, $eclipticalLongitudeRadians) = @_;
-    
+
   return $jd + 0.0053*sin($meanSolarAnomalyRadians) - 0.0069*sin(2*$eclipticalLongitudeRadians);
 }
 
@@ -571,7 +570,7 @@ sub RiseSet(;$$$$$) {
 
   # iteratively improve solar transit date at given longitude
   ($solarTransitJD, my $declinationRadians) = HourAngleOptimization(0, $solarTransitJD, $longitudeEast);
-  
+
   # initial estimate of sun rise/set hour angle at given latitude and altitude
   my $hourAngleRiseSet = acos((sin((ElevationCorrection($altitude) + $twilightAngle)*$rad) - sin($latitudeNorth*$rad)*sin($declinationRadians))/(cos($latitudeNorth*$rad)*cos($declinationRadians)))/$rad;
   my $hourAngleRiseSetRatio = $hourAngleRiseSet/360;
@@ -617,7 +616,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.014.003;
+our $VERSION   = 1.014.004;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -1748,8 +1747,8 @@ sub ProcessForecast($$$)
             push(@sunrises, FormatTimeLocal($hash, $rise));    # round down to current minute
             push(@sunsets, FormatTimeLocal($hash, $set + 30)); # round up to next minute
             $lastDate = $date;
-            
-            #::Log3 $name, 3, "$name: ProcessForecast " . FormatDateTimeLocal($hash, $timestamp) . " $rise " . FormatDateTimeLocal($hash, $rise) . " $transit " . FormatDateTimeLocal($hash, $transit). " $set " . FormatDateTimeLocal($hash, $set + 30);            
+
+            #::Log3 $name, 3, "$name: ProcessForecast " . FormatDateTimeLocal($hash, $timestamp) . " $rise " . FormatDateTimeLocal($hash, $rise) . " $transit " . FormatDateTimeLocal($hash, $transit). " $set " . FormatDateTimeLocal($hash, $set + 30);
           } else {
             push(@sunrises, $defaultUndefSign); # round down to current minute
             push(@sunsets, $defaultUndefSign);  # round up to next minute
@@ -2653,6 +2652,9 @@ sub DWD_OpenData_Initialize($) {
 #
 # CHANGES
 #
+# 17.04.2019 (version 1.14.4) jensb
+# bugfix: fix reading SunUp (azimuth/elevation calculation)
+#
 # 17.03.2019 (version 1.14.3) jensb
 # coding: moved sun related code into separate module AstroSun
 #
@@ -2849,7 +2851,7 @@ sub DWD_OpenData_Initialize($) {
   <ul> <br>
       <li>forecastStation &lt;station code&gt;, default: none<br>
           Setting forecastStation enables automatic updates every hour.
-          The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.<br>
+          The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <code>id<code> column of the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.<br>
           Note: When value is changed all existing forecast readings will be deleted.
       </li><br>
       <li>forecastDays &lt;n&gt;, default: 6<br>
