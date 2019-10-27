@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 69_GardenaValve.pm 5 2018-12-10 19:43:00Z jnsbyr $
+# $Id: 69_GardenaValve.pm 6 2019-01-20 17:20:00Z jnsbyr $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -50,6 +50,7 @@ use Try::Tiny;
 
 use constant
 {
+  # FHEM device state
   GARDENA_VALVE_STATE_INITIALIZED   => 'INIT',
   GARDENA_VALVE_STATE_OFF           => 'OFF',
   GARDENA_VALVE_STATE_AUTO          => 'AUTO',
@@ -59,6 +60,12 @@ use constant
   GARDENA_VALVE_STATE_SHUTDOWN      => 'SHUTDOWN',
   GARDENA_VALVE_STATE_OFFLINE       => 'OFFLINE',
   GARDENA_VALVE_STATE_DISABLED      => 'DISABLED',
+
+  # valve modes
+  VALVE_MODE_OFF       => 'OFF',       # writable
+  VALVE_MODE_ON        => 'MANUAL',    # writable
+  VALVE_MODE_AUTO      => 'AUTO',      # writable
+  VALVE_MODE_OVERRIDE  => 'OVERRIDE',  # readonly
 };
 
 my %weekdays = (
@@ -179,18 +186,23 @@ sub GardenaValve_Parse($$)
         {
           my $oldMode = ReadingsVal($name, "mode", '?');
           my $manualStart = ReadingsVal($name, 'manualStart', '');
-          if ($oldMode ne 'MANUAL' || length($manualStart) > 0)
+          if ($json->{mode} ne $oldMode)
           {
-            if ($json->{mode} ne $oldMode)
-            {
-              # use remote mode if local mode is not 'MANUAL' or manual start time is defined
-              readingsBulkUpdate($hash, "mode", $json->{mode});
-            }
+            readingsBulkUpdate($hash, "mode", $json->{mode});
           }
-          if (($json->{mode} eq 'OFF' || $json->{mode} eq 'AUTO') && length($manualStart) > 0)
+          if (($json->{mode} eq VALVE_MODE_OFF || $json->{mode} eq VALVE_MODE_AUTO))
           {
-            # clear manual start time if remote mode is 'OFF' or 'AUTO'
-            readingsBulkUpdate($hash, "manualStart", '');
+            if (length($manualStart) > 0)
+            {
+              # clear manual start time if remote mode is 'OFF' or 'AUTO'
+              readingsBulkUpdate($hash, "manualStart", '');
+            }
+            my $oldSchedulerEnabled = ReadingsVal($name, "schedulerEnabled", undef);
+            if (!defined($oldSchedulerEnabled) || ($json->{mode} eq VALVE_MODE_OFF && $oldSchedulerEnabled == 1) || ($json->{mode} eq VALVE_MODE_AUTO && $oldSchedulerEnabled == 0))
+            {
+              # update auto (valve controller has priority over FHEM device)
+              readingsBulkUpdate($hash, "schedulerEnabled", $json->{mode} eq VALVE_MODE_AUTO);
+            }
           }
         }
 
@@ -207,7 +219,9 @@ sub GardenaValve_Parse($$)
           # state
           my $state = $json->{state};
           my $valve = $state eq GARDENA_VALVE_STATE_ON? 'OPEN' : 'CLOSED';
-          if ($json->{mode} eq 'LOW BAT')
+          if ($json->{mode} eq 'LOW BAT' || $json->{mode} eq 'BAD VALVE WIRING' ||
+              $json->{mode} eq 'LOW OPEN VOLTAGE' || $json->{mode} eq 'LOW CLOSE VOLTAGE' ||
+              $json->{mode} eq 'UNDEFINED VALVE STATUS')
           {
             # overwrite valve state when valve operation has been shut down to make it more obvious
             $state = GARDENA_VALVE_STATE_SHUTDOWN;
@@ -217,7 +231,7 @@ sub GardenaValve_Parse($$)
             # overwrite valve state when voltage is low to make it more obvious
             $state = GARDENA_VALVE_STATE_LOW_BAT;
           }
-          elsif ($json->{mode} eq 'AUTO' && $valve eq 'CLOSED')
+          elsif ($json->{mode} eq VALVE_MODE_AUTO && $valve eq 'CLOSED')
           {
             # overwrite valve state when valve is closed and auto mode is enabled to make it more obvious
             $state = GARDENA_VALVE_STATE_AUTO;
@@ -328,6 +342,12 @@ sub GardenaValve_Parse($$)
           readingsBulkUpdate($hash, "RSSI", $json->{RSSI});
         }
 
+        # valve resistance
+        if (defined($json->{resistance}) && $json->{resistance} ne ReadingsVal($name, "valveResistance", 0))
+        {
+          readingsBulkUpdate($hash, "valveResistance", $json->{resistance});
+        }
+
         readingsEndUpdate($hash, 1);
 
         if ($json->{name} eq 'SleeperRequest')
@@ -337,11 +357,12 @@ sub GardenaValve_Parse($$)
           my $manualStart = ReadingsVal($name, 'manualStart', '');
           my $manualStartTime = length($manualStart)? time_str2num($manualStart) : 0;
           my $defaultDuration = AttrVal($name, 'defaultDuration', 0);   # seconds
-          my $mode = ReadingsVal($name, 'mode', 'OFF');
-          if ($mode eq 'MANUAL' && $manualStartTime == 0)
+          my $mode = ReadingsVal($name, 'mode', VALVE_MODE_OFF);
+          my $auto = ReadingsVal($name, 'auto', 0);
+          if ($mode eq VALVE_MODE_ON && $manualStartTime == 0)
           {
             # manual start time undefined
-            $mode = 'OFF';
+            $mode = $auto? VALVE_MODE_AUTO : VALVE_MODE_OFF;
           }
 
           # send command
@@ -466,7 +487,7 @@ sub GardenaValve_Set($@)
 
   return "argument required" if (!defined($a[1]));
 
-  my $usage = "unsupported argument " . $a[1] . ", choose one of off:noArg manual:noArg auto:noArg on:noArg on-till:textField";
+  my $usage = "unsupported argument " . $a[1] . ", choose one of off:noArg manual:noArg auto:noArg on:noArg on-from:textField";
 
   if (lc($a[1]) eq "on")
   {
@@ -477,13 +498,13 @@ sub GardenaValve_Set($@)
       readingsBeginUpdate($hash);
       $hash->{UPDATING} = 1;
       readingsBulkUpdate($hash, 'manualStart', $manualStart);
-      readingsBulkUpdate($hash, 'mode', 'MANUAL');
+      readingsBulkUpdate($hash, 'mode', VALVE_MODE_ON);
       readingsBulkUpdate($hash, 'state', GARDENA_VALVE_STATE_UPDATING, 1);
       readingsEndUpdate($hash, 1);
     }
     return undef;
   }
-  elsif (lc($a[1]) eq "on-till")
+  elsif (lc($a[1]) eq "on-from")
   {
     if (!AttrVal($hash->{NAME}, 'disable', 0))
     {
@@ -505,7 +526,7 @@ sub GardenaValve_Set($@)
       readingsBeginUpdate($hash);
       $hash->{UPDATING} = 1;
       readingsBulkUpdate($hash, 'manualStart', $manualStart);
-      readingsBulkUpdate($hash, 'mode', 'MANUAL');
+      readingsBulkUpdate($hash, 'mode', VALVE_MODE_ON);
       readingsBulkUpdate($hash, 'state', GARDENA_VALVE_STATE_UPDATING, 1);
       readingsEndUpdate($hash, 1);
     }
@@ -515,12 +536,13 @@ sub GardenaValve_Set($@)
   {
     if (!AttrVal($hash->{NAME}, 'disable', 0))
     {
-      if (ReadingsVal($name, "mode", "") ne 'OFF')
+      if (ReadingsVal($name, "mode", "") ne VALVE_MODE_OFF)
       {
         $hash->{UPDATING} = 1;
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash, 'manualStart', '');
-        readingsBulkUpdate($hash, 'mode', 'OFF');
+        my $schedulerEnabled = ReadingsVal($name, 'schedulerEnabled', 0);
+        readingsBulkUpdate($hash, 'mode', $schedulerEnabled? VALVE_MODE_AUTO : VALVE_MODE_OFF);
         readingsBulkUpdate($hash, 'state', GARDENA_VALVE_STATE_UPDATING, 1);
         readingsEndUpdate($hash, 1);
       }
@@ -534,7 +556,8 @@ sub GardenaValve_Set($@)
       $hash->{UPDATING} = 1;
       readingsBeginUpdate($hash);
       readingsBulkUpdate($hash, 'manualStart', '');
-      readingsBulkUpdate($hash, 'mode', 'MANUAL');
+      readingsBulkUpdate($hash, 'schedulerEnabled', 0);
+      readingsBulkUpdate($hash, 'mode', VALVE_MODE_OFF);
       readingsBulkUpdate($hash, 'state', GARDENA_VALVE_STATE_UPDATING, 1);
       readingsEndUpdate($hash, 1);
     }
@@ -544,12 +567,13 @@ sub GardenaValve_Set($@)
   {
     if (!AttrVal($hash->{NAME}, 'disable', 0))
     {
-      if (ReadingsVal($name, "mode", "") ne 'AUTO')
+      if (ReadingsVal($name, "mode", "") ne VALVE_MODE_AUTO)
       {
         $hash->{UPDATING} = 1;
         readingsBeginUpdate($hash);
         readingsBulkUpdate($hash, 'manualStart', '');
-        readingsBulkUpdate($hash, 'mode', 'AUTO');
+        readingsBulkUpdate($hash, 'schedulerEnabled', 1);
+        readingsBulkUpdate($hash, 'mode', VALVE_MODE_AUTO);
         readingsBulkUpdate($hash, 'state', GARDENA_VALVE_STATE_UPDATING, 1);
         readingsEndUpdate($hash, 1);
       }
@@ -829,6 +853,13 @@ sub GardenaValve_Poll($)
 #
 # CHANGES
 #
+# 20.01.2019 JN
+# - added reading "schedulerEnabled" to make operation mode more self explanatory
+#
+# 05.01.2019 JB
+# - added reading valveResistance
+# - added support for new valve monitoring shutdown states
+#
 # 10.12.2018 JB
 # - create new programId when schedule is deleted to trigger program update in WiFi controller
 #
@@ -885,12 +916,12 @@ sub GardenaValve_Poll($)
     <b>Set</b>
     <ul>
       <li><b>on</b> - open valve once for <i>defaultDuration</i> starting at next communication (convenience method for MANUAL &lt;now + remaining wakeupPeriod&gt;)</li>
-      <li><b>on-till &lt;startTime&gt;</b> - open valve once for <i>defaultDuration</i> starting at given startTime (YYYY-MM-DD hh:mm:ss)<br>
+      <li><b>on-from &lt;startTime&gt;</b> - open valve once for <i>defaultDuration</i> starting at given startTime (YYYY-MM-DD hh:mm:ss)<br>
           <i>Note: The valve will not open if the operation time (startTime + defaultDuration) has already passed before next communication.</i>
       </li>
+      <li><b>off</b> - close valve if valve scheduler is disabled</li>
       <li><b>auto</b> - enable valve scheduler</li>
-      <li><b>off</b> - close valve and disable valve scheduler with next communication</li>
-      <li><b>manual</b> - same behaviour as off - can be used to prevent automatic control toggling between auto and off</li>
+      <li><b>manual</b> - disable valve scheduler (and close valve if open)</li>
       <i>Note: It is (for security reasons) not possible to remotely override a manual push button operation at the valve controller.</i>
     </ul>
     <p>
@@ -901,6 +932,8 @@ sub GardenaValve_Poll($)
       <li><b>mode</b> - operation mode of the valve controller, may be OFF, MANUAL, AUTO or OVERRRIDE<br>
           OVERRIDE mode is activated by using the manual push button at the valve controller.<br>
       </li>
+      <li><b>schedulerEnabled</b> - state of the valve controller scheduler<br>
+      </li>
       <li><b>state</b> - state of the device, may be:
         <ul>
           <li>OFF - valve closed, scheduler disabled</li>
@@ -909,7 +942,7 @@ sub GardenaValve_Poll($)
           <li>UPDATING - last set command will be transmitted to valve controller at next wakeup</li>
           <li>LOW BAT  - valve controller battery voltage is low, valve operation will shut down soon</li>
           <li>SHUTDOWN - valve controller battery empty<br>
-              <b>Warning: In SHUTDOWN state all valve operations are disabled. The valve controller will try to close an already open valve when entering SHUTDOWN state.</b>
+              <b>Warning: In SHUTDOWN state all valve operations are disabled. The valve controller will try to close an already open valve when entering SHUTDOWN state. If shutdown was caused by low battery the battery must be recharged before operation continues. If shutdown was caused by a valve operating error the controller and the valve wiring should be checked and tests should be done using the manual push button.</b>
           </li>
           <li>OFFLINE - valve controller has not communicated for more than 2 times the current wakeupPeriod</li>
           <li>INIT - FHEM device is initialized and waiting for data or commands</li>
@@ -921,7 +954,8 @@ sub GardenaValve_Poll($)
       </li>
       <li><b>time</b> - the current time of the valve controller, may be used to fine tune <i>timeScale</i></li>
       <li><b>timeOffset</b> - the time offset of the valve controller [s], may be used to fine tune <i>timeScale</i></li>
-      <li><b>voltage</b> - the regulator voltage of the valve controller, should be 3.32 V with a fully charged battery</li>
+      <li><b>voltage</b> - the regulator voltage of the valve controller at controller startup, should be 3.32 V with a fully charged battery</li>
+      <li><b>valveResistance</b> - the valve resistance detected when opening the valve, should be around 40 ohms with good wiring</li>
       <li><b>openCount</b> - number of times the valve was opened since physical device was reset</li>
       <li><b>openCountOverall</b> - total number of times the valve was opened since FHEM device was reset</li>
       <li><b>openDuration</b> - total time [h] the valve was open since physical device was reset</li>
