@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201500 2018-02-23 19:56:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201601 2019-07-14 19:59:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -63,7 +63,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.016.000;
+our $VERSION   = 2.016.001;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -1196,7 +1196,7 @@ sub GetForecastHtmlH($$$$) {
   }
   $ret .= '</div>';
 
-  return $ret;
+  return $ret . '</div>';
 }
 
 =head2 AsHtmlH($)
@@ -1293,6 +1293,8 @@ sub DWD_OpenData_Weblink_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 2019-07-14  bugfix: added missing final closing </div> tag to GetForecastHtmlH
 #
 # 2019-02-23  feature: location specific day/night detection based on new reading SunUp
 #
