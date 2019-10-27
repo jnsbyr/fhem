@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 68_GardenaBridge.pm 3 2018-04-21 14:46:00Z jensb $
+# $Id: 68_GardenaBridge.pm 4 2010-01-05 15:31:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -102,7 +102,7 @@ sub GardenaBridge_Read($)
     # read from TCP client connect descriptor
     my $hash = $defs{$chash->{SNAME}};
     my $buffer;
-    my $ret = sysread($chash->{CD}, $buffer, 256);
+    my $ret = sysread($chash->{CD}, $buffer, 320);
     if (!defined($ret) || $ret <= 0)
     {
       # close TCP client connection
@@ -118,6 +118,14 @@ sub GardenaBridge_Read($)
 }
 
 1;
+
+# -----------------------------------------------------------------------------
+#
+# CHANGES
+#
+# 2019-01-05  feature: read buffer size increased
+#
+# -----------------------------------------------------------------------------
 
 =head1 FHEM COMMANDREF METADATA
 
