@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 18941 2019-04-17 17:48:00Z jensb $
+# $Id: 55_DWD_OpenData.pm 19336 2019-05-05 18:26:34Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -2851,7 +2851,7 @@ sub DWD_OpenData_Initialize($) {
   <ul> <br>
       <li>forecastStation &lt;station code&gt;, default: none<br>
           Setting forecastStation enables automatic updates every hour.
-          The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <code>id<code> column of the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.<br>
+          The station code is either a 5 digit WMO station code or an alphanumeric DWD station code from the <code>id</code> column of the <a href="https://www.dwd.de/DE/leistungen/met_verfahren_mosmix/mosmix_stationskatalog.pdf">MOSMIX station catalogue</a>.<br>
           Note: When value is changed all existing forecast readings will be deleted.
       </li><br>
       <li>forecastDays &lt;n&gt;, default: 6<br>
