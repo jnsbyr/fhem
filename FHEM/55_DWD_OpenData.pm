@@ -616,7 +616,7 @@ use constant UPDATE_COMMUNEUNIONS => -2;
 use constant UPDATE_ALL           => -3;
 
 require Exporter;
-our $VERSION   = 1.014.004;
+our $VERSION   = 1.014.005;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(GetForecast GetAlerts UpdateAlerts UPDATE_DISTRICTS UPDATE_COMMUNEUNIONS UPDATE_ALL);
 our @EXPORT_OK = qw(IsCommuneUnionWarncellId);
@@ -1845,7 +1845,6 @@ sub GetForecastFinish(@)
       # error, skip further processing
     } elsif (!defined($hash->{".forecastFile"})) {
       $errorMessage = "internal temp file name missing";
-      ::Log3 $name, 3, "$name: GetForecastFinish error: $errorMessage";
     } else {
       # deserialize forecast
       my $fh = $hash->{".forecastFileHandle"};
@@ -1863,8 +1862,16 @@ sub GetForecastFinish(@)
     }
 
     if (defined($errorMessage) && length($errorMessage) > 0) {
-      ::readingsSingleUpdate($hash, 'state', "forecast error: $errorMessage", 1);
-      ::readingsSingleUpdate($hash, 'fc_state', "error: $errorMessage", 1);
+      ::Log3 $name, 3, "$name: GetForecastFinish error: $errorMessage";
+    
+      ::readingsBeginUpdate($hash);  
+      ::readingsBulkUpdate($hash, 'state', "forecast error: $errorMessage");
+      ::readingsBulkUpdate($hash, 'fc_state', "error: $errorMessage");
+
+      # rotate forecast anyway
+      my $station = $hash->{".station"};
+      RotateForecast($hash, $station);  
+      ::readingsEndUpdate($hash, 1);
     } else {
       ::readingsSingleUpdate($hash, 'fc_state', 'updated', 1);
     }
@@ -1897,18 +1904,19 @@ sub GetForecastAbort($)
 {
   my ($hash, $errorMessage) = @_;
   my $name = $hash->{NAME};
-  my $station = $hash->{".station"};
 
   delete $hash->{".forecastBlockingCall"};
   delete $hash->{forecastUpdating};
   $errorMessage = "downloading and processing weather forecast data failed ($errorMessage)";
   ::Log3 $name, 3, "$name: GetForecastAbort error: $errorMessage";
-  ::readingsSingleUpdate($hash, 'state', "forecast error: $errorMessage", 1);
-  ::readingsSingleUpdate($hash, 'fc_state', "error: $errorMessage", 1);
+
+  ::readingsBeginUpdate($hash);  
+  ::readingsBulkUpdate($hash, 'state', "forecast error: $errorMessage");
+  ::readingsBulkUpdate($hash, 'fc_state', "error: $errorMessage");
 
   # rotate forecast anyway
-  ::readingsBeginUpdate($hash);
-  RotateForecast($hash, $station);
+  my $station = $hash->{".station"};
+  RotateForecast($hash, $station);  
   ::readingsEndUpdate($hash, 1);
 
   if (defined($hash->{".fetchAlerts"}) && !$hash->{".fetchAlerts"}) {
@@ -2559,42 +2567,44 @@ sub UpdateAlerts($$)
   my %excludeEvents = map { $_ => 1 } @excludeEventsList;
 
   # order alerts by onset
-  my $alerts = $alertsData[$communeUnion];
-  my @identifiers = sort { $alerts->{$a}->{onset} <=> $alerts->{$b}->{onset} } keys(%{$alerts});
-  foreach my $identifier (@identifiers) {
-    my $alert = $alerts->{$identifier};
-    # find alert for selected warncell
-    my $areaIndex = 0;
-    foreach my $wcId (@{$alert->{warncellid}}) {
-      if ($wcId == $warncellId && !(lc($alert->{severity}) eq 'minor' && defined($excludeEvents{$alert->{eventCode}}))) {
-        # alert found that is not on the exclude list, create readings
-        my $prefix = 'a_'.$index.'_';
-        ::readingsBulkUpdate($hash, $prefix.'category',     $alert->{category});
-        ::readingsBulkUpdate($hash, $prefix.'event',        $alert->{eventCode});
-        ::readingsBulkUpdate($hash, $prefix.'eventDesc',    encode('UTF-8', $alert->{event}));
-        ::readingsBulkUpdate($hash, $prefix.'eventGroup',   $alert->{eventGroup});
-        ::readingsBulkUpdate($hash, $prefix.'responseType', $alert->{responseType});
-        ::readingsBulkUpdate($hash, $prefix.'urgency',      $alert->{urgency});
-        ::readingsBulkUpdate($hash, $prefix.'severity',     $alert->{severity});
-        ::readingsBulkUpdate($hash, $prefix.'areaColor',    $alert->{areaColor});
-        ::readingsBulkUpdate($hash, $prefix.'onset',        FormatDateTimeLocal($hash, $alert->{onset}));
-        ::readingsBulkUpdate($hash, $prefix.'expires',      FormatDateTimeLocal($hash, $alert->{expires}));
-        ::readingsBulkUpdate($hash, $prefix.'headline',     encode('UTF-8', $alert->{headline}));
-        ::readingsBulkUpdate($hash, $prefix.'description',  encode('UTF-8', $alert->{description}));
-        ::readingsBulkUpdate($hash, $prefix.'instruction',  encode('UTF-8', $alert->{instruction}));
-        ::readingsBulkUpdate($hash, $prefix.'area',         $alert->{warncellid}[$areaIndex]);
-        ::readingsBulkUpdate($hash, $prefix.'areaDesc',     encode('UTF-8', $alert->{areaDesc}[$areaIndex]));
-        ::readingsBulkUpdate($hash, $prefix.'altitude',     floor(0.3048*$alert->{altitude}[$areaIndex] + 0.5));
-        ::readingsBulkUpdate($hash, $prefix.'ceiling',      floor(0.3048*$alert->{ceiling}[$areaIndex] + 0.5));
-        $index++;
-        last();
+  if (ref($alertsData[$communeUnion]) eq 'HASH') {
+    my $alerts = $alertsData[$communeUnion];
+    my @identifiers = sort { $alerts->{$a}->{onset} <=> $alerts->{$b}->{onset} } keys(%{$alerts});
+    foreach my $identifier (@identifiers) {
+      my $alert = $alerts->{$identifier};
+      # find alert for selected warncell
+      my $areaIndex = 0;
+      foreach my $wcId (@{$alert->{warncellid}}) {
+        if ($wcId == $warncellId && !(lc($alert->{severity}) eq 'minor' && defined($excludeEvents{$alert->{eventCode}}))) {
+          # alert found that is not on the exclude list, create readings
+          my $prefix = 'a_'.$index.'_';
+          ::readingsBulkUpdate($hash, $prefix.'category',     $alert->{category});
+          ::readingsBulkUpdate($hash, $prefix.'event',        $alert->{eventCode});
+          ::readingsBulkUpdate($hash, $prefix.'eventDesc',    encode('UTF-8', $alert->{event}));
+          ::readingsBulkUpdate($hash, $prefix.'eventGroup',   $alert->{eventGroup});
+          ::readingsBulkUpdate($hash, $prefix.'responseType', $alert->{responseType});
+          ::readingsBulkUpdate($hash, $prefix.'urgency',      $alert->{urgency});
+          ::readingsBulkUpdate($hash, $prefix.'severity',     $alert->{severity});
+          ::readingsBulkUpdate($hash, $prefix.'areaColor',    $alert->{areaColor});
+          ::readingsBulkUpdate($hash, $prefix.'onset',        FormatDateTimeLocal($hash, $alert->{onset}));
+          ::readingsBulkUpdate($hash, $prefix.'expires',      FormatDateTimeLocal($hash, $alert->{expires}));
+          ::readingsBulkUpdate($hash, $prefix.'headline',     encode('UTF-8', $alert->{headline}));
+          ::readingsBulkUpdate($hash, $prefix.'description',  encode('UTF-8', $alert->{description}));
+          ::readingsBulkUpdate($hash, $prefix.'instruction',  encode('UTF-8', $alert->{instruction}));
+          ::readingsBulkUpdate($hash, $prefix.'area',         $alert->{warncellid}[$areaIndex]);
+          ::readingsBulkUpdate($hash, $prefix.'areaDesc',     encode('UTF-8', $alert->{areaDesc}[$areaIndex]));
+          ::readingsBulkUpdate($hash, $prefix.'altitude',     floor(0.3048*$alert->{altitude}[$areaIndex] + 0.5));
+          ::readingsBulkUpdate($hash, $prefix.'ceiling',      floor(0.3048*$alert->{ceiling}[$areaIndex] + 0.5));
+          $index++;
+          last();
+        }
+        $areaIndex++;
       }
-      $areaIndex++;
-    }
-
-    # license
-    if ($index == 1 && defined($alert->{license})) {
-      ::readingsBulkUpdate($hash, 'a_copyright', encode('UTF-8', $alert->{license}));
+      
+      # license
+      if ($index == 1 && defined($alert->{license})) {
+        ::readingsBulkUpdate($hash, 'a_copyright', encode('UTF-8', $alert->{license}));
+      }
     }
   }
 
@@ -2651,6 +2661,10 @@ sub DWD_OpenData_Initialize($) {
 # -----------------------------------------------------------------------------
 #
 # CHANGES
+#
+# 05.04.2020 (version 1.14.5) jensb
+# bugfix: perform forecast rotation if download fails without timeout
+# bugfix: skip alert update if initial download fails
 #
 # 17.04.2019 (version 1.14.4) jensb
 # bugfix: fix reading SunUp (azimuth/elevation calculation)
