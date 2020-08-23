@@ -1,6 +1,6 @@
 ########################################################################################
 #
-# $Id: 10_FRM.pm 15941 2018-12-29 18:08:00Z jensb $
+# $Id: 10_FRM.pm ? 2020-05-10 11:56:00Z jensb $
 #
 # FHEM module to communicate with Firmata devices
 #
@@ -34,9 +34,10 @@
 
 package main;
 
-use vars qw{%attr %defs};
 use strict;
 use warnings;
+
+use vars qw{%attr %defs};
 use GPUtils qw(:all);
 
 #add FHEM/lib to @INC if it's not already included. Should rather be in fhem.pl than here though...
@@ -48,22 +49,26 @@ BEGIN {
   };
 };
 
+use feature qw(switch);
+no if $] >= 5.017011, warnings => 'experimental';
+
 use Device::Firmata;
-use Device::Firmata::Constants qw/ :all /;
-use Device::Firmata::Protocol;
+use Device::Firmata::Constants qw(:all);
+use Device::Firmata::Protocol qw(push_value_as_two_7bit);
 use Device::Firmata::Platform;
 
-sub FRM_Set($@);
-sub FRM_Attr(@);
+sub FRM_Set;
+sub FRM_Attr;
 
 my %sets = (
-  "reset" => "",
-  "reinit" => ""
+  "reset:noArg"  => "",
+  "reinit:noArg" => "",
+  "sendString"   => ""
 );
 
 my %gets = (
   "firmware" => "",
-  "version"   => ""
+  "version"  => ""
 );
 
 my @clients = qw(
@@ -102,12 +107,12 @@ my @clients = qw(
 
 =cut
 
-sub FRM_Initialize($) {
+sub FRM_Initialize {
   my $hash = shift @_;
 
   require "$main::attr{global}{modpath}/FHEM/DevIo.pm";
 
-  # Provider
+  # Producer
   $hash->{Clients} = join (':',@clients);
   $hash->{ReadyFn} = "FRM_Ready";
   $hash->{ReadFn}  = "FRM_Read";
@@ -126,7 +131,15 @@ sub FRM_Initialize($) {
   $hash->{AttrFn}   = "FRM_Attr";
   $hash->{NotifyFn} = "FRM_Notify";
 
-  $hash->{AttrList} = "model:nano dummy:1,0 sampling-interval i2c-config resetDeviceOnConnect:0,1 software-serial-config errorExclude disable:0,1 $main::readingFnAttributes";
+  $hash->{AttrList} = "disable:0,1 " .
+                      "dummy:1,0 " .
+                      "errorExclude " .
+                      "i2c-config " .
+                      "ping-interval " .
+                      "resetDeviceOnConnect:0,1 " .
+                      "sampling-interval " .
+                      "software-serial-config " .
+                      "$main::readingFnAttributes";
 }
 
 =item FRM_Define($$)
@@ -139,7 +152,7 @@ sub FRM_Initialize($) {
 
 =cut
 
-sub FRM_Define($$) {
+sub FRM_Define {
   my ( $hash, $def ) = @_;
 
   my ($name, $type, $dev, $global) = split("[ \t]+", $def);
@@ -147,11 +160,15 @@ sub FRM_Define($$) {
 
   $hash->{NOTIFYDEV} = "global";
 
-  if ( $dev eq "none" ) {
-    Log3 $name,3,"device is none, commands will be echoed only";
+  if ($dev eq "none") {
+    Log3 $name, 3, "device is none, commands will be echoed only";
     $main::attr{$name}{dummy} = 1;
   }
-  if ($main::init_done && !AttrVal($name,'disable',0)) {
+  my $pingInterval = AttrVal($name, 'ping-interval', 0);
+  if (looks_like_number($pingInterval) && $pingInterval > 0) {
+    InternalTimer(gettimeofday() + $pingInterval/1000.0, 'FRM_Monitor', $hash, 0);
+  }
+  if ($main::init_done && !AttrVal($name, 'disable', 0)) {
     return FRM_Start($hash);
   }
   readingsSingleUpdate($hash, 'state', 'defined', 1);
@@ -169,8 +186,10 @@ sub FRM_Define($$) {
 
 =cut
 
-sub FRM_Undef($) {
+sub FRM_Undef {
   my $hash = shift;
+
+  RemoveInternalTimer($hash);
   FRM_forall_clients($hash,\&FRM_Client_Unassign,undef);
   if (defined $hash->{DeviceName}) {
     DevIo_Disconnected($hash);
@@ -186,7 +205,6 @@ sub FRM_Undef($) {
   }
 
   FRM_FirmataDevice_Close($hash);
-
   FRM_ClearConfiguration($hash);
 
   return undef;
@@ -202,7 +220,7 @@ sub FRM_Undef($) {
 
 =cut
 
-sub FRM_Start($) {
+sub FRM_Start {
   my ($hash) = @_;
   my $name  = $hash->{NAME};
 
@@ -256,13 +274,17 @@ sub FRM_Start($) {
 =cut
 
 sub FRM_Notify {
-  my ($hash,$dev) = @_;
+  my ($hash, $dev) = @_;
   my $name  = $hash->{NAME};
   my $type  = $hash->{TYPE};
 
-  if( grep(m/^(INITIALIZED|REREADCFG)$/, @{$dev->{CHANGED}}) && !AttrVal($name,'disable',0) ) {
+  if (grep(m/^(INITIALIZED|REREADCFG)$/, @{$dev->{CHANGED}}) && !AttrVal($name, 'disable', 0)) {
+    # FHEM (re-)initialized
     FRM_Start($hash);
-  } elsif( grep(m/^SAVE$/, @{$dev->{CHANGED}}) ) {
+  } elsif (grep(m/^DISCONNECTED$/, @{$dev->{CHANGED}}) && $type eq 'FRM' && defined($hash->{SocketDevice}) && $hash->{SocketDevice} eq $dev) {
+    # TCP socket closed
+    FRM_Tcp_Connection_Close($dev);
+    FRM_FirmataDevice_Close($hash);
   }
 }
 
@@ -276,7 +298,7 @@ sub FRM_Notify {
 
 =cut
 
-sub FRM_is_firmata_connected($) {
+sub FRM_is_firmata_connected {
   my ($hash) = @_;
   return defined($hash->{FirmataDevice}) && defined($hash->{FirmataDevice}->{io});
 }
@@ -291,15 +313,15 @@ sub FRM_is_firmata_connected($) {
 
 =cut
 
-sub FRM_Set($@) {
+sub FRM_Set {
   my ($hash, @a) = @_;
-  return "Need at least one parameters" if(@a < 2);
-  return "Unknown argument $a[1], choose one of " . join(":noArg ", sort keys %sets) . ":noArg" if(!defined($sets{$a[1]}));
-  my $command = $a[1];
-  my $value = $a[2];
+  return "missing set command, choose one of " . join(" ", sort keys %sets) if (@a < 2);
 
-  COMMAND_HANDLER: {
-    $command eq "reset" and do {
+  my $command = $a[1];
+  return "incomplete set command $command, choose one of " . join(" ", sort keys %sets) if ($command eq 'sendString' && @a < 3);
+
+  given($command) {
+    when("reset") {
       return "not connected to Firmata device" unless (FRM_is_firmata_connected($hash) && (defined $hash->{FD} or ($^O=~/Win/ and defined $hash->{USBDev})));
       $hash->{FirmataDevice}->system_reset();
       FRM_ClearConfiguration($hash);
@@ -320,11 +342,20 @@ sub FRM_Set($@) {
         return DevIo_OpenDev($hash, 0, "FRM_DoInit");
       }
     };
-    $command eq "reinit" and do {
-      FRM_forall_clients($hash,\&FRM_Init_Client,undef);
-      last;
+
+    when("reinit") {
+      FRM_forall_clients($hash, \&FRM_Init_Client, undef);
     };
+
+    when("sendString") {
+      FRM_String_Write($hash, $a[2]);
+    };
+
+    default {
+      return "unknown set $command, choose one of " . join(" ", sort keys %sets);
+    }
   }
+
   return undef;
 }
 
@@ -338,7 +369,7 @@ sub FRM_Set($@) {
 
 =cut
 
-sub FRM_Get($@) {
+sub FRM_Get {
   my ($hash, @a) = @_;
   return "Need at least one parameters" if(@a < 2);
   return "Unknown argument $a[1], choose one of " . join(":noArg ", sort keys %gets) . ":noArg" if(!defined($gets{$a[1]}));
@@ -373,7 +404,7 @@ sub FRM_Get($@) {
 
 =cut
 
-sub FRM_Read($) {
+sub FRM_Read {
   my ( $hash ) = @_;
   if($hash->{SERVERSOCKET}) {   # Accept and create a child
     my $chash = TcpServer_Accept($hash, "FRM");
@@ -404,11 +435,11 @@ sub FRM_Read($) {
     number of bytes waiting to be read or nothing on error
 
   Description:
-    FHEM module RedyFn, called by IODev of FRM ($hash is IODev/master, $shash is FRM/slave)
+    FHEM module ReadyFn, called by IODev of FRM ($hash is IODev/master, $shash is FRM/slave)
 
 =cut
 
-sub FRM_Ready($) {
+sub FRM_Ready {
   my ($hash) = @_;
   my $name = $hash->{NAME};
   if ($name=~/^^FRM:.+:\d+$/) { # this is a closed tcp-connection, remove it
@@ -416,6 +447,8 @@ sub FRM_Ready($) {
     FRM_FirmataDevice_Close($hash);
     return;
   }
+
+  Log3 $name, 5, "$name FRM_Ready";
 
   # reopen connection to DevIO if closed
   return DevIo_OpenDev($hash, 1, "FRM_DoInit") if($hash->{STATE} eq "disconnected");
@@ -439,7 +472,7 @@ sub FRM_Ready($) {
 
 =cut
 
-sub FRM_Tcp_Connection_Close($) {
+sub FRM_Tcp_Connection_Close {
   my $hash = shift;
   TcpServer_Close($hash);
   if ($hash->{SNAME}) {
@@ -469,7 +502,7 @@ sub FRM_Tcp_Connection_Close($) {
 
 =cut
 
-sub FRM_FirmataDevice_Close($) {
+sub FRM_FirmataDevice_Close {
   my $hash = shift;
   my $name = $hash->{NAME};
   my $device = $hash->{FirmataDevice};
@@ -493,28 +526,49 @@ sub FRM_FirmataDevice_Close($) {
 
 =cut
 
-sub FRM_Attr(@) {
-  my ($command,$name,$attribute,$value) = @_;
+sub FRM_Attr {
+  my ($command, $name, $attribute, $value) = @_;
   my $hash = $main::defs{$name};
-  if ($command eq "set") {
-    ARGUMENT_HANDLER: {
-      ($attribute eq "sampling-interval" or
-       $attribute eq "i2c-config") and do {
-        $main::attr{$name}{$attribute}=$value;
-        FRM_apply_attribute($main::defs{$name},$attribute);
-        last;
-      };
-      $attribute eq "disable" and do {
-        if ($main::init_done) {
-          if ($value) {
-            FRM_Undef($hash);
-            readingsSingleUpdate($hash, 'state', 'disabled', 1);
+
+  given($command) {
+    when("set") {
+      given($attribute) {
+        when(["sampling-interval", "i2c-config"]) {
+          $main::attr{$name}{$attribute} = $value;
+          FRM_apply_attribute($main::defs{$name}, $attribute);
+        }
+        when("disable") {
+          if ($main::init_done) {
+            if ($value) {
+              FRM_Undef($hash);
+              readingsSingleUpdate($hash, 'state', 'disabled', 1);
+            } else {
+              FRM_Start($hash);
+            }
+          }
+        }
+        when("ping-interval") {
+          my $pingInterval = (defined($value) && looks_like_number($value) && $value > 0) ? $value : 0;
+          if ($pingInterval > 0) {
+            InternalTimer(gettimeofday() + $pingInterval/1000.0, 'FRM_Monitor', $hash, 0);
           } else {
+            RemoveInternalTimer($hash, 'FRM_Monitor');
+          }
+        }
+      }
+    }
+
+    when("del") {
+      given($attribute) {
+        when("disable") {
+          if ($main::init_done && !$value) {
             FRM_Start($hash);
           }
         }
-        last;
-      };
+        when("ping-interval") {
+          RemoveInternalTimer($hash, 'FRM_Monitor');
+        }
+      }
     }
   }
 }
@@ -571,7 +625,7 @@ sub FRM_apply_attribute {
 
 =cut
 
-sub FRM_DoInit($) {
+sub FRM_DoInit {
   my ($hash) = @_;
 
   my $sname = $hash->{SNAME}; #is this a serversocket-connection?
@@ -615,7 +669,7 @@ sub FRM_DoInit($) {
 
 =cut
 
-sub FRM_ClearConfiguration($) {
+sub FRM_ClearConfiguration {
   my $hash = shift;
   my $name = $hash->{NAME};
 
@@ -656,9 +710,7 @@ sub FRM_ClearConfiguration($) {
 
 =cut
 
-sub FRM_SetupDevice($);
-
-sub FRM_SetupDevice($) {
+sub FRM_SetupDevice {
   my ($hash) = @_;
   if (defined($hash->{SNAME})) {
     $hash = $main::defs{$hash->{SNAME}};
@@ -675,7 +727,7 @@ sub FRM_SetupDevice($) {
   my $device = $hash->{FirmataDevice};
 
   if ($hash->{SETUP_STAGE} == 1) { # protocol and firmware version
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, 'FRM_SetupDevice');
     InternalTimer($now + (($elapsed < 1)? 0.1 : 1), 'FRM_SetupDevice', $hash, 0);
     # wait for protocol and firmware version
     my $fhemRestart = !defined($main::defs{$name}{protocol_version});
@@ -733,7 +785,7 @@ sub FRM_SetupDevice($) {
     }
 
   } elsif  ($hash->{SETUP_STAGE} == 2) { # device capabilities
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, 'FRM_SetupDevice');
     InternalTimer(gettimeofday() + 1, 'FRM_SetupDevice', $hash, 0);
     my $capabilitiesReceived = $device->{metadata}{capabilities} && ($device->{metadata}{analog_mappings} || ($elapsed >= 5));
     if ($capabilitiesReceived) {
@@ -845,7 +897,7 @@ sub FRM_SetupDevice($) {
 
   } elsif ($hash->{SETUP_STAGE} == 5) { # finish setup
     # terminate setup sequence
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, 'FRM_SetupDevice');
     delete $hash->{SETUP_START};
     delete $hash->{SETUP_STAGE};
     delete $hash->{SETUP_TRIES};
@@ -1085,7 +1137,7 @@ FRM_Client_AssignIOPort($@) {
 
 =cut
 
-sub FRM_Client_FirmataDevice($) {
+sub FRM_Client_FirmataDevice {
   my $chash = shift;
   my $iodev = $chash->{IODev};
   die $chash->{NAME}." no IODev assigned" unless defined $iodev;
@@ -1103,7 +1155,7 @@ sub FRM_Client_FirmataDevice($) {
 
 =cut
 
-sub FRM_Catch($) {
+sub FRM_Catch {
   my $exception = shift;
   if ($exception) {
     $exception =~ /^(.*)( at.*FHEM.*)$/;
@@ -1111,6 +1163,41 @@ sub FRM_Catch($) {
   }
   return undef;
 }
+
+sub FRM_String_Write;
+
+=item FRM_Monitor($)
+
+  Returns:
+    undef
+
+  Description:
+    FRM internal timer for conneciton monitoring ($hash is FRM)
+
+=cut
+
+sub FRM_Monitor {
+  my ($hash) =  @_;
+  my $name = $hash->{NAME};
+  RemoveInternalTimer($hash, 'FRM_Monitor');
+
+  # send ping message to Firmata device
+  FRM_String_Write($hash, 'ping');
+
+  if (defined($hash->{SocketDevice}) && $hash->{SocketDevice}{STATE} eq 'disconnected' && $hash->{STATE} eq 'Initialized') {
+    FRM_Tcp_Connection_Close($hash->{SocketDevice});
+    FRM_FirmataDevice_Close($hash);
+  }
+
+  # schedule next monitor call
+  my $pingInterval = AttrVal($name, 'ping-interval', 0);
+  if (looks_like_number($pingInterval) && $pingInterval > 0) {
+    InternalTimer(gettimeofday() + $pingInterval/1000.0, 'FRM_Monitor', $hash, 0);
+  }
+
+  return undef;
+}
+
 
 =item Firmata_IO
 
@@ -1121,7 +1208,7 @@ sub FRM_Catch($) {
 
 package Firmata_IO;
 
-sub new($$) {
+sub new($$$) {
   my ($class,$hash,$name) = @_;
   return bless {
     hash => $hash,
@@ -1129,14 +1216,14 @@ sub new($$) {
   }, $class;
 }
 
-sub data_write($$) {
+sub data_write {
   my ( $self, $buf ) = @_;
   my $hash = $self->{hash};
   main::Log3 $self->{name},5,"$self->{name} FRM:>".unpack "H*",$buf;
   main::DevIo_SimpleWrite($hash,$buf,undef);
 }
 
-sub data_read($$) {
+sub data_read {
   my ( $self, $bytes ) = @_;
   my $hash = $self->{hash};
   my $string = main::DevIo_SimpleRead($hash);
@@ -1185,11 +1272,11 @@ package main;
 
 =cut
 
-sub FRM_I2C_Write($$)
+sub FRM_I2C_Write
 {
   my ($hash, $package) = @_;
   my $name = $hash->{NAME};
-  
+
   if (defined($package) && defined($package->{i2caddress})) {
     if (FRM_is_firmata_connected($hash)) {
       my $firmata = $hash->{FirmataDevice};
@@ -1217,7 +1304,7 @@ sub FRM_I2C_Write($$)
       FRM_forall_clients($hash, \&FRM_i2c_update_device, $package);
     }
   }
-  
+
   return undef;
 }
 
@@ -1231,9 +1318,9 @@ sub FRM_I2C_Write($$)
 
 =cut
 
-sub FRM_i2c_observer($$) {
+sub FRM_i2c_observer {
   my ($data, $hash) = @_;
-  
+
   Log3 $hash->{NAME}, 5, "onI2CMessage address: '" . $data->{address} . "', register: '" . $data->{register} . "' data: [" . join(',', @{$data->{data}}) . "]";
 
   my $sendStat = defined($hash->{I2C_ERROR})? $hash->{I2C_ERROR} : "Ok";
@@ -1258,12 +1345,43 @@ sub FRM_i2c_observer($$) {
 
 =cut
 
-sub FRM_i2c_update_device($$) {
+sub FRM_i2c_update_device {
   my ($chash, $package) = @_;
 
   if (defined($chash->{I2C_Address}) && $chash->{I2C_Address} eq $package->{i2caddress}) {
     CallFn($chash->{NAME}, "I2CRecFn", $chash, $package);
   }
+}
+
+=item FRM_String_Write
+
+  Returns:
+    number of bytes send
+
+  Description:
+    send string message to Firmata device ($hash is FRM)
+
+=cut
+
+sub FRM_String_Write {
+  my ($hash, $string) =  @_;
+  my $name = $hash->{NAME};
+
+  # send string message to Firmata device
+  if (FRM_is_firmata_connected($hash) && $hash->{STATE} eq 'Initialized') {
+    my $firmata = $hash->{FirmataDevice};
+    my $protocolVersion = $firmata->{metadata}{protocol_version};
+    if (defined($protocolVersion) && defined($COMMANDS->{$protocolVersion})) {
+      my @inBytes = unpack("C*", $string);
+      my @outBytes;
+      Device::Firmata::Protocol->can('push_array_as_two_7bit')->(\@inBytes, \@outBytes);
+      return $firmata->sysex_send($COMMANDS->{$protocolVersion}->{STRING_DATA}, @outBytes);
+    }
+  } else {
+    Log3 $name, 5, "$name connection not initialized, string message not send";
+  }
+
+  return 0;
 }
 
 =item FRM_string_observer
@@ -1276,7 +1394,7 @@ sub FRM_i2c_update_device($$) {
 
 =cut
 
-sub FRM_string_observer($$) {
+sub FRM_string_observer {
   my ($string,$hash) = @_;
   my $errorExclude = AttrVal($hash->{NAME}, "errorExclude", undef);
   if (defined($errorExclude) && length($errorExclude) > 0 && ($string =~ $errorExclude)) {
@@ -1301,7 +1419,7 @@ sub FRM_string_observer($$) {
 
 =cut
 
-sub FRM_serial_observer($$) {
+sub FRM_serial_observer {
   my ($data,$hash) = @_;
   #Log3 $hash->{NAME},5,"onSerialMessage port: '".$data->{port}."' data: [".(join(',',@{$data->{data}}))."]";
   FRM_forall_clients($hash,\&FRM_serial_update_device,$data);
@@ -1318,7 +1436,7 @@ sub FRM_serial_observer($$) {
 
 =cut
 
-sub FRM_serial_update_device($$) {
+sub FRM_serial_update_device {
   my ($chash,$data) = @_;
 
   if (defined $chash->{IODevPort} and $chash->{IODevPort} eq $data->{port}) {
@@ -1340,7 +1458,7 @@ sub FRM_serial_update_device($$) {
 
 =cut
 
-sub FRM_serial_setup($) {
+sub FRM_serial_setup {
   my ($hash) = @_;
 
   foreach my $port ( keys %{$hash->{SERIAL}} ) {
@@ -1361,7 +1479,7 @@ sub FRM_serial_setup($) {
 
 =cut
 
-sub FRM_poll($) {
+sub FRM_poll {
   my ($hash) = @_;
   if (defined $hash->{SocketDevice} and defined $hash->{SocketDevice}->{FD}) {
     my ($rout, $rin) = ('', '');
@@ -1404,7 +1522,7 @@ sub FRM_poll($) {
 
 =cut
 
-sub FRM_OWX_Init($$) {
+sub FRM_OWX_Init {
   my ($chash,$args) = @_;
   my $ret = FRM_Init_Pin_Client($chash,$args,PIN_ONEWIRE);
   return $ret if (defined $ret);
@@ -1435,7 +1553,7 @@ sub FRM_OWX_Init($$) {
 
 =cut
 
-sub FRM_OWX_observer($$)
+sub FRM_OWX_observer
 {
   my ( $data,$chash ) = @_;
   my $command = $data->{command};
@@ -1485,7 +1603,7 @@ sub FRM_OWX_observer($$)
 
 =cut
 
-sub FRM_OWX_device_to_firmata($)
+sub FRM_OWX_device_to_firmata
 {
   my @device;
   foreach my $hbyte (unpack "A2xA2A2A2A2A2A2xA2", shift) {
@@ -1505,7 +1623,7 @@ sub FRM_OWX_device_to_firmata($)
 
 =cut
 
-sub FRM_OWX_firmata_to_device($)
+sub FRM_OWX_firmata_to_device
 {
   my $device = shift;
   return sprintf ("%02X.%02X%02X%02X%02X%02X%02X.%02X",$device->{family},@{$device->{identity}},$device->{crc});
@@ -1518,7 +1636,7 @@ sub FRM_OWX_firmata_to_device($)
 
 =cut
 
-sub FRM_OWX_Verify($$) {
+sub FRM_OWX_Verify {
   my ($chash,$dev) = @_;
   foreach my $found (@{$chash->{DEVS}}) {
     if ($dev eq $found) {
@@ -1535,7 +1653,7 @@ sub FRM_OWX_Verify($$) {
 
 =cut
 
-sub FRM_OWX_Alarms($) {
+sub FRM_OWX_Alarms {
   my ($chash) = @_;
 
   my $ret = eval {
@@ -1571,7 +1689,7 @@ sub FRM_OWX_Alarms($) {
 
 =cut
 
-sub FRM_OWX_Reset($) {
+sub FRM_OWX_Reset {
   my ($chash) = @_;
   my $ret = eval {
     my $firmata = FRM_Client_FirmataDevice($chash);
@@ -1596,7 +1714,7 @@ sub FRM_OWX_Reset($) {
 
 =cut
 
-sub FRM_OWX_Complex($$$$) {
+sub FRM_OWX_Complex {
   my ( $chash, $owx_dev, $data, $numread ) = @_;
 
   my $res = "";
@@ -1675,7 +1793,7 @@ sub FRM_OWX_Complex($$$$) {
 
 =cut
 
-sub FRM_OWX_Discover($) {
+sub FRM_OWX_Discover {
   my ($chash) = @_;
 
   my $ret = eval {
@@ -1716,7 +1834,7 @@ sub FRM_OWX_Discover($) {
 
 =cut
 
-sub FRM_Serial_Open($) {
+sub FRM_Serial_Open {
   my ($chash) = @_;
 
   if (!defined $chash->{IODevPort} || !defined $chash->{IODevParameters}) {
@@ -1742,7 +1860,7 @@ sub FRM_Serial_Open($) {
 
 =cut
 
-sub FRM_Serial_Setup($) {
+sub FRM_Serial_Setup {
   my ($chash) = @_;
 
   if (FRM_is_firmata_connected($chash->{IODev})) {
@@ -1824,7 +1942,7 @@ sub FRM_Serial_Setup($) {
 
 =cut
 
-sub FRM_Serial_Write($$) {
+sub FRM_Serial_Write {
   my ($chash, $msg) = @_;
 
   my $firmata = FRM_Client_FirmataDevice($chash);
@@ -1853,7 +1971,7 @@ sub FRM_Serial_Write($$) {
 
 =cut
 
-sub FRM_Serial_Close($) {
+sub FRM_Serial_Close {
   my ($chash) = @_;
 
   my $port = $chash->{IODevPort};
@@ -1948,7 +2066,14 @@ sub FRM_Serial_Close($) {
     o removed unused FHEMWEB set/get text fields
     o moved I2C receive processing for FRM_I2C to FRM_I2C module
     o set I2C SENDSTAT to error if I2CWrtFn is called while not connected and propagate error by synchronously calling I2CRecFn
-    
+
+  10.05.2020 jensb
+    o code formatted
+    o new attribute "ping-interval"
+    o new set command "sendString"
+    o TCP socket close detection improved
+    o prototypes removed
+
 =cut
 
 =pod
@@ -2073,6 +2198,11 @@ sub FRM_Serial_Close($) {
   <li>
     <code>set &lt;name&gt; reset</code><br>
     performs a software reset on the Firmata device and disconnects form the Firmata device - after the Firmata device reconnects the attached FRM client devices are reinitialized
+  </li><br>
+
+  <li>
+    <code>set &lt;name&gt; sendString &lt;message&gt;</code><br>
+    sends a string message to the the Firmata device
   </li>
   </ul>
   <br><br>
@@ -2119,6 +2249,22 @@ sub FRM_Serial_Close($) {
 
       <li>disable {0|1}, default: 0<br>
       Disables this devices if set to 1.
+      </li><br>
+
+      <li>ping-interval &lt;interval&gt;, default: disabled<br>
+      Configure the interval in milliseconds for FHEM to send the string message <i>ping</i> to the
+      firmata device (e.g. 10000 ms). The default Firmata device implementation will ignore this message
+      on receive.<br>
+      This should be enabled when FHEM is not configured to periodically send data to a network connected
+      Firmata device to be able to detect an abnormal device disconnect (e.g. caused by a device power
+      off). For the same reasons you can add <code>Firmata.sendString("ping");</code> to the sketch of
+      the Firmata device if the Firmata device is not configured to send data periodically to FHEM. 
+      Note that this type of disconnect detection will not be immediate but will take several minutes
+      to trigger.
+      </li><br>
+
+      <li>dummy {0|1}, default: 0<br>
+      Will be set to 1 if device is set to <i>none</i>. Reserved for internal use, do not set manually!
       </li>
   </ul>
   <br><br>
