@@ -1,42 +1,47 @@
 ########################################################################################
-#
-# $Id: 10_FRM.pm 15941 2018-12-29 18:08:00Z jensb $
-#
-# FHEM module to communicate with Firmata devices
-#
+# $Id: 10_FRM.pm ? 2020-09-21 17:40:00Z jensb $
 ########################################################################################
-#
-#  LICENSE AND COPYRIGHT
-#
-#  Copyright (C) 2013 ntruchess
-#  Copyright (C) 2015 jensb
-#
-#  All rights reserved
-#
-#  This script is free software; you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 2 of the License, or
-#  (at your option) any later version.
-#
-#  The GNU General Public License can be found at
-#  http://www.gnu.org/copyleft/gpl.html.
-#  A copy is found in the textfile GPL.txt and important notices to the license
-#  from the author is found in LICENSE.txt distributed with these scripts.
-#
-#  This script is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
-#
-#  This copyright notice MUST APPEAR in all copies of the script!
-#
-########################################################################################
+
+=encoding UTF-8
+
+=head1 NAME
+
+FHEM module to communicate with Firmata devices
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2013 ntruchess
+Copyright (C) 2015 jensb
+
+All rights reserved
+
+This script is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+The GNU General Public License can be found at
+
+http://www.gnu.org/copyleft/gpl.html.
+
+A copy is found in the textfile GPL.txt and important notices to the license
+from the author is found in LICENSE.txt distributed with these scripts.
+
+This script is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+This copyright notice MUST APPEAR in all copies of the script!
+
+=cut
 
 package main;
 
-use vars qw{%attr %defs};
 use strict;
 use warnings;
+
+use vars qw{%attr %defs};
 use GPUtils qw(:all);
 
 #add FHEM/lib to @INC if it's not already included. Should rather be in fhem.pl than here though...
@@ -48,49 +53,55 @@ BEGIN {
   };
 };
 
-use Device::Firmata;
-use Device::Firmata::Constants qw/ :all /;
-use Device::Firmata::Protocol;
-use Device::Firmata::Platform;
+use feature qw(switch);
+no if $] >= 5.017011, warnings => 'experimental';
 
-sub FRM_Set($@);
-sub FRM_Attr(@);
+use constant FRM_MIN_DEVICE_FIRMATA_VERSION => 0.69;
 
+my $FRM_DEVICE_FIRMATA_OK = 0;
+
+# number of arguments
 my %sets = (
-  "reset" => "",
-  "reinit" => ""
+  "reset:noArg"  => 0,
+  "reinit:noArg" => 0,
+  "sendString"   => 1
 );
 
 my %gets = (
   "firmware" => "",
-  "version"   => ""
+  "version"  => ""
 );
 
 my @clients = qw(
-  FRM_IN
-  FRM_OUT
+  I2C_BH1750
+  I2C_BME280
+  I2C_BMP180
+  I2C_DS1307
+  I2C_INA219
+  I2C_K30
+  I2C_LCD
+  I2C_LM.*
+  I2C_MCP230.*
+  I2C_MCP342.*
+  I2C_PC.*
+  I2C_SHT.*
+  I2C_TSL2561
   FRM_AD
-  FRM_PWM
   FRM_I2C
-  FRM_SERVO
+  FRM_IN
+  FRM_LCD
+  FRM_OUT
+  FRM_PWM
   FRM_RGB
   FRM_ROTENC
+  FRM_SERVO
   FRM_STEPPER
   OWX
   OWX_ASYNC
-  I2C_LCD
-  I2C_DS1307
-  I2C_PC.*
-  I2C_MCP23.*
-  I2C_SHT.*
-  I2C_BME280
-  I2C_BMP180
-  I2C_BH1750
-  I2C_TSL2561
-  FRM_LCD
-  I2C_K30
-  I2C_LM.*
 );
+
+sub FRM_Set;
+sub FRM_Attr;
 
 =item FRM_Initialize($)
 
@@ -102,12 +113,12 @@ my @clients = qw(
 
 =cut
 
-sub FRM_Initialize($) {
+sub FRM_Initialize {
   my $hash = shift @_;
 
   require "$main::attr{global}{modpath}/FHEM/DevIo.pm";
 
-  # Provider
+  # Producer
   $hash->{Clients} = join (':',@clients);
   $hash->{ReadyFn} = "FRM_Ready";
   $hash->{ReadFn}  = "FRM_Read";
@@ -126,7 +137,15 @@ sub FRM_Initialize($) {
   $hash->{AttrFn}   = "FRM_Attr";
   $hash->{NotifyFn} = "FRM_Notify";
 
-  $hash->{AttrList} = "model:nano dummy:1,0 sampling-interval i2c-config resetDeviceOnConnect:0,1 software-serial-config errorExclude disable:0,1 $main::readingFnAttributes";
+  $hash->{AttrList} = "disable:0,1 " .
+                      "dummy:1,0 " .
+                      "errorExclude " .
+                      "i2c-config " .
+                      "ping-interval " .
+                      "resetDeviceOnConnect:0,1 " .
+                      "sampling-interval " .
+                      "software-serial-config " .
+                      "$main::readingFnAttributes";
 }
 
 =item FRM_Define($$)
@@ -139,7 +158,7 @@ sub FRM_Initialize($) {
 
 =cut
 
-sub FRM_Define($$) {
+sub FRM_Define {
   my ( $hash, $def ) = @_;
 
   my ($name, $type, $dev, $global) = split("[ \t]+", $def);
@@ -147,14 +166,52 @@ sub FRM_Define($$) {
 
   $hash->{NOTIFYDEV} = "global";
 
-  if ( $dev eq "none" ) {
-    Log3 $name,3,"device is none, commands will be echoed only";
+  if ($dev eq "none") {
+    Log3 $name, 3, "$name: device is none, commands will be echoed only";
     $main::attr{$name}{dummy} = 1;
   }
-  if ($main::init_done && !AttrVal($name,'disable',0)) {
+
+  # check if Device::Firmata module is properly installed
+  eval {
+    require Device::Firmata;
+    require Device::Firmata::Constants;
+    require Device::Firmata::Platform;
+    require Device::Firmata::Protocol;
+    delete $main::defs{$name}{DRIVER_STATUS};
+    $FRM_DEVICE_FIRMATA_OK = 1;
+  };
+  if ($@) {
+    $main::defs{$name}{DRIVER_STATUS} = 'Perl module Device::Firmata not found, see Commandref for details how to fix';
+    $FRM_DEVICE_FIRMATA_OK = 0;
+    Log3 $name, 1, "$name ERROR: " . $main::defs{$name}{DRIVER_STATUS};
+    readingsSingleUpdate($hash, 'state', 'error', 1);
+    return undef;
+  }
+
+  # check Device::Firmata module version
+  $main::defs{$name}{DRIVER_VERSION} = $Device::Firmata::VERSION;
+  if ($Device::Firmata::VERSION < FRM_MIN_DEVICE_FIRMATA_VERSION) {
+    $main::defs{$name}{DRIVER_STATUS} = 'Perl module Device::Firmata version ' . FRM_MIN_DEVICE_FIRMATA_VERSION . ' or higher required, see Commandref for details how to fix';
+    $FRM_DEVICE_FIRMATA_OK = 1;
+    Log3 $name, 2, "$name WARNING: " . $main::defs{$name}{DRIVER_STATUS};
+    # @TODO readingsSingleUpdate($hash, 'state', 'error', 1);
+    # @TODO $FRM_DEVICE_FIRMATA_OK = 0;
+    # @TODO return undef;
+  }
+
+  readingsSingleUpdate($hash, 'state', 'defined', 1);
+
+  if ($main::init_done) {
+    # defined via mofiy or reload
+    my $pingInterval = AttrVal($name, 'ping-interval', 0);
+    if (looks_like_number($pingInterval) && $pingInterval > 0) {
+      InternalTimer(gettimeofday() + $pingInterval/1000.0, 'FRM_Monitor', $hash, 0);
+    }
+    if (AttrVal($name, 'disable', 0) != 0) {
+      readingsSingleUpdate($hash, 'state', 'disabled', 1);
+    }
     return FRM_Start($hash);
   }
-  readingsSingleUpdate($hash, 'state', 'defined', 1);
 
   return undef;
 }
@@ -169,8 +226,10 @@ sub FRM_Define($$) {
 
 =cut
 
-sub FRM_Undef($) {
+sub FRM_Undef {
   my $hash = shift;
+
+  RemoveInternalTimer($hash);
   FRM_forall_clients($hash,\&FRM_Client_Unassign,undef);
   if (defined $hash->{DeviceName}) {
     DevIo_Disconnected($hash);
@@ -186,7 +245,6 @@ sub FRM_Undef($) {
   }
 
   FRM_FirmataDevice_Close($hash);
-
   FRM_ClearConfiguration($hash);
 
   return undef;
@@ -202,29 +260,27 @@ sub FRM_Undef($) {
 
 =cut
 
-sub FRM_Start($) {
+sub FRM_Start {
   my ($hash) = @_;
   my $name  = $hash->{NAME};
 
-  my ($dev, $global) = split("[ \t]+", $hash->{DEF});
-  $hash->{DeviceName} = $dev;
+  if ($FRM_DEVICE_FIRMATA_OK <= 0) {
+    return "$name Perl module Device::Firmata not properly installed";
+  }
 
-  my $isServer = 1 if($dev && $dev =~ m/^(IPV6:)?\d+$/);
-# my $isClient = 1 if($dev && $dev =~ m/^(IPV6:)?.*:\d+$/);
-
-# return "Usage: define <name> FRM {<device>[@<baudrate>] | [IPV6:]<tcp-portnr> [global]}"
-#   if(!($isServer || $isClient) ||
-#     ($isClient && $global) ||
-#     ($global && $global ne "global"));
+  if (AttrVal($name, 'disable', 0) != 0) {
+    return "$name is disabled";
+  }
 
   # clear old device ids to force full init
   FRM_ClearConfiguration($hash);
 
-  # show version of perl-firmata driver
-  $main::defs{$name}{DRIVER_VERSION} = $Device::Firmata::VERSION;
+  my ($dev, $global) = split("[ \t]+", $hash->{DEF});
+  $hash->{DeviceName} = $dev;
 
   # make sure that fhem only runs once
-  if($isServer) {
+  my $isServer = 1 if($dev && $dev =~ m/^(IPV6:)?\d+$/);
+  if ($isServer) {
     # set initial state
     readingsSingleUpdate($hash, 'state', 'defined', 1);
 
@@ -240,9 +296,11 @@ sub FRM_Start($) {
   DevIo_CloseDev($hash);
   readingsSingleUpdate($hash, 'state', 'defined', 1);
 
-  # open DevIO
-  my $ret = DevIo_OpenDev($hash, 0, "FRM_DoInit");
-  return $ret;
+  if (AttrVal($name, 'dummy', 0) == 0) {
+    # open DevIO
+    my $ret = DevIo_OpenDev($hash, 0, "FRM_DoInit");
+    return $ret;
+  }
 }
 
 =item FRM_Notify
@@ -256,13 +314,17 @@ sub FRM_Start($) {
 =cut
 
 sub FRM_Notify {
-  my ($hash,$dev) = @_;
+  my ($hash, $dev) = @_;
   my $name  = $hash->{NAME};
   my $type  = $hash->{TYPE};
 
-  if( grep(m/^(INITIALIZED|REREADCFG)$/, @{$dev->{CHANGED}}) && !AttrVal($name,'disable',0) ) {
+  if (grep(m/^(INITIALIZED|REREADCFG)$/, @{$dev->{CHANGED}})) {
+    # FHEM (re-)initialized
     FRM_Start($hash);
-  } elsif( grep(m/^SAVE$/, @{$dev->{CHANGED}}) ) {
+  } elsif (grep(m/^DISCONNECTED$/, @{$dev->{CHANGED}}) && $type eq 'FRM' && defined($hash->{SocketDevice}) && $hash->{SocketDevice} eq $dev) {
+    # TCP socket closed
+    FRM_Tcp_Connection_Close($dev);
+    FRM_FirmataDevice_Close($hash);
   }
 }
 
@@ -276,7 +338,7 @@ sub FRM_Notify {
 
 =cut
 
-sub FRM_is_firmata_connected($) {
+sub FRM_is_firmata_connected {
   my ($hash) = @_;
   return defined($hash->{FirmataDevice}) && defined($hash->{FirmataDevice}->{io});
 }
@@ -291,15 +353,16 @@ sub FRM_is_firmata_connected($) {
 
 =cut
 
-sub FRM_Set($@) {
-  my ($hash, @a) = @_;
-  return "Need at least one parameters" if(@a < 2);
-  return "Unknown argument $a[1], choose one of " . join(":noArg ", sort keys %sets) . ":noArg" if(!defined($sets{$a[1]}));
-  my $command = $a[1];
-  my $value = $a[2];
+sub FRM_Set {
+  my ($hash, $name, $cmd, @a) = @_;
 
-  COMMAND_HANDLER: {
-    $command eq "reset" and do {
+  return "set command missing" if(!defined($cmd));
+  my @match = grep( $_ =~ /^$cmd($|:)/, keys %sets );
+  return "unknown set command '$cmd', choose one of " . join(" ", sort keys %sets) if ($cmd eq '?' || @match == 0);
+  return "$cmd requires $sets{$match[0]} argument(s)" unless (@a == $sets{$match[0]});
+
+  given($cmd) {
+    when("reset") {
       return "not connected to Firmata device" unless (FRM_is_firmata_connected($hash) && (defined $hash->{FD} or ($^O=~/Win/ and defined $hash->{USBDev})));
       $hash->{FirmataDevice}->system_reset();
       FRM_ClearConfiguration($hash);
@@ -307,24 +370,28 @@ sub FRM_Set($@) {
         # dispose preexisting connections
         foreach my $e ( sort keys %main::defs ) {
           if ( defined( my $dev = $main::defs{$e} )) {
-            if ( defined( $dev->{SNAME} ) && ( $dev->{SNAME} eq $hash->{NAME} )) {
+            if ( defined( $dev->{SNAME} ) && ( $dev->{SNAME} eq $name )) {
               FRM_Tcp_Connection_Close($dev);
             }
           }
         }
         FRM_FirmataDevice_Close($hash);
-        last;
       } else {
         DevIo_Disconnected($hash);
         FRM_FirmataDevice_Close($hash);
         return DevIo_OpenDev($hash, 0, "FRM_DoInit");
       }
     };
-    $command eq "reinit" and do {
-      FRM_forall_clients($hash,\&FRM_Init_Client,undef);
-      last;
+
+    when("reinit") {
+      FRM_forall_clients($hash, \&FRM_Init_Client, undef);
+    };
+
+    when("sendString") {
+      FRM_String_Write($hash, $a[0]);
     };
   }
+
   return undef;
 }
 
@@ -338,13 +405,13 @@ sub FRM_Set($@) {
 
 =cut
 
-sub FRM_Get($@) {
-  my ($hash, @a) = @_;
-  return "Need at least one parameters" if(@a < 2);
-  return "Unknown argument $a[1], choose one of " . join(":noArg ", sort keys %gets) . ":noArg" if(!defined($gets{$a[1]}));
-  my $name = shift @a;
-  my $cmd = shift @a;
-  ARGUMENT_HANDLER: {
+sub FRM_Get {
+  my ($hash, $name, $cmd, @a) = @_;
+
+  return "get command missing" if(!defined($cmd));
+  return "unknown get command '$cmd', choose one of " . join(":noArg ", sort keys %gets) . ":noArg" if(!defined($gets{$cmd}));
+
+  GETHANDLER: {
     $cmd eq "firmware" and do {
       if (FRM_is_firmata_connected($hash)) {
         return $hash->{FirmataDevice}->{metadata}->{firmware};
@@ -373,7 +440,7 @@ sub FRM_Get($@) {
 
 =cut
 
-sub FRM_Read($) {
+sub FRM_Read {
   my ( $hash ) = @_;
   if($hash->{SERVERSOCKET}) {   # Accept and create a child
     my $chash = TcpServer_Accept($hash, "FRM");
@@ -404,11 +471,11 @@ sub FRM_Read($) {
     number of bytes waiting to be read or nothing on error
 
   Description:
-    FHEM module RedyFn, called by IODev of FRM ($hash is IODev/master, $shash is FRM/slave)
+    FHEM module ReadyFn, called by IODev of FRM ($hash is IODev/master, $shash is FRM/slave)
 
 =cut
 
-sub FRM_Ready($) {
+sub FRM_Ready {
   my ($hash) = @_;
   my $name = $hash->{NAME};
   if ($name=~/^^FRM:.+:\d+$/) { # this is a closed tcp-connection, remove it
@@ -416,6 +483,8 @@ sub FRM_Ready($) {
     FRM_FirmataDevice_Close($hash);
     return;
   }
+
+  Log3 $name, 5, "$name: FRM_Ready";
 
   # reopen connection to DevIO if closed
   return DevIo_OpenDev($hash, 1, "FRM_DoInit") if($hash->{STATE} eq "disconnected");
@@ -439,7 +508,7 @@ sub FRM_Ready($) {
 
 =cut
 
-sub FRM_Tcp_Connection_Close($) {
+sub FRM_Tcp_Connection_Close {
   my $hash = shift;
   TcpServer_Close($hash);
   if ($hash->{SNAME}) {
@@ -469,7 +538,7 @@ sub FRM_Tcp_Connection_Close($) {
 
 =cut
 
-sub FRM_FirmataDevice_Close($) {
+sub FRM_FirmataDevice_Close {
   my $hash = shift;
   my $name = $hash->{NAME};
   my $device = $hash->{FirmataDevice};
@@ -493,30 +562,60 @@ sub FRM_FirmataDevice_Close($) {
 
 =cut
 
-sub FRM_Attr(@) {
-  my ($command,$name,$attribute,$value) = @_;
+sub FRM_Attr {
+  my ($command, $name, $attribute, $value) = @_;
   my $hash = $main::defs{$name};
-  if ($command eq "set") {
-    ARGUMENT_HANDLER: {
-      ($attribute eq "sampling-interval" or
-       $attribute eq "i2c-config") and do {
-        $main::attr{$name}{$attribute}=$value;
-        FRM_apply_attribute($main::defs{$name},$attribute);
-        last;
-      };
-      $attribute eq "disable" and do {
-        if ($main::init_done) {
+
+  given($command) {
+    when("set") {
+      given($attribute) {
+        when(["sampling-interval", "i2c-config"]) {
+          $main::attr{$name}{$attribute} = $value;
+          FRM_apply_attribute($main::defs{$name}, $attribute);
+        }
+        when("disable") {
+          my $disabled = main::ReadingsVal($name, 'state', '?') eq 'disabled';
           if ($value) {
-            FRM_Undef($hash);
-            readingsSingleUpdate($hash, 'state', 'disabled', 1);
+            if (!$disabled) {
+              FRM_Undef($hash);
+              readingsSingleUpdate($hash, 'state', 'disabled', 1);
+            }
           } else {
+            if ($main::init_done && $disabled) {
+              $main::attr{$name}{disable} = 0; # otherwise change of attr is not visible in FRM_Start()
+              readingsSingleUpdate($hash, 'state', 'defined', 1);
+              FRM_Start($hash);
+            }
+          }
+        }
+        when("ping-interval") {
+          my $pingInterval = (defined($value) && looks_like_number($value) && $value > 0) ? $value : 0;
+          if ($pingInterval > 0) {
+            InternalTimer(gettimeofday() + $pingInterval/1000.0, 'FRM_Monitor', $hash, 0);
+          } else {
+            RemoveInternalTimer($hash, 'FRM_Monitor');
+          }
+        }
+      }
+    }
+
+    when("del") {
+      given($attribute) {
+        when("disable") {
+          my $disabled = main::ReadingsVal($name, 'state', '?') eq 'disabled';
+          if ($main::init_done && $disabled) {
+            readingsSingleUpdate($hash, 'state', 'defined', 1);
             FRM_Start($hash);
           }
         }
-        last;
-      };
+        when("ping-interval") {
+          RemoveInternalTimer($hash, 'FRM_Monitor');
+        }
+      }
     }
   }
+
+  return undef;
 }
 
 =item FRM_apply_attribute()
@@ -545,16 +644,16 @@ sub FRM_apply_attribute {
         if (defined $i2cpins and scalar @$i2cpins) {
           eval {
             foreach my $i2cpin (@$i2cpins) {
-              $firmata->pin_mode($i2cpin,PIN_I2C);
+              $firmata->pin_mode($i2cpin, Device::Firmata::Constants->PIN_I2C);
             }
             $firmata->i2c_config(@a);
             $firmata->observe_i2c(\&FRM_i2c_observer,$hash);
           };
-          $err = $@ if ($@);
+          $err = FRM_Catch($@) if ($@);
         } else {
           $err = "Error, arduino doesn't support I2C";
         }
-        Log3 $name,2,$err if ($err);
+        Log3 $name, 2, "$name ERROR: $err" if ($err);
       }
     }
   }
@@ -571,15 +670,15 @@ sub FRM_apply_attribute {
 
 =cut
 
-sub FRM_DoInit($) {
+sub FRM_DoInit {
   my ($hash) = @_;
 
   my $sname = $hash->{SNAME}; #is this a serversocket-connection?
   my $shash = defined $sname ? $main::defs{$sname} : $hash;
   my $name = $shash->{NAME};
 
-  Log3 $name, 5, "$name FRM_DoInit";
-  readingsSingleUpdate($shash, 'state', "connected", 1);
+  Log3 $name, 5, "$name: FRM_DoInit";
+  readingsSingleUpdate($shash, 'state', 'connected', 1);
 
   my $firmata_io = Firmata_IO->new($hash, $name);
   my $device = Device::Firmata::Platform->attach($firmata_io) or return 1;
@@ -615,7 +714,7 @@ sub FRM_DoInit($) {
 
 =cut
 
-sub FRM_ClearConfiguration($) {
+sub FRM_ClearConfiguration {
   my $hash = shift;
   my $name = $hash->{NAME};
 
@@ -656,9 +755,7 @@ sub FRM_ClearConfiguration($) {
 
 =cut
 
-sub FRM_SetupDevice($);
-
-sub FRM_SetupDevice($) {
+sub FRM_SetupDevice {
   my ($hash) = @_;
   if (defined($hash->{SNAME})) {
     $hash = $main::defs{$hash->{SNAME}};
@@ -668,14 +765,14 @@ sub FRM_SetupDevice($) {
 
   my $name = $hash->{NAME};
 
-  Log3 $name, 5, "$name setup stage $hash->{SETUP_STAGE}";
+  Log3 $name, 5, "$name: setup stage $hash->{SETUP_STAGE}";
 
   my $now = gettimeofday();
   my $elapsed = $now - $hash->{SETUP_START};
   my $device = $hash->{FirmataDevice};
 
   if ($hash->{SETUP_STAGE} == 1) { # protocol and firmware version
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, 'FRM_SetupDevice');
     InternalTimer($now + (($elapsed < 1)? 0.1 : 1), 'FRM_SetupDevice', $hash, 0);
     # wait for protocol and firmware version
     my $fhemRestart = !defined($main::defs{$name}{protocol_version});
@@ -689,7 +786,7 @@ sub FRM_SetupDevice($) {
       $main::defs{$name}{firmware} = $device->{metadata}{firmware};
       $main::defs{$name}{firmware_version} = $device->{metadata}{firmware_version};
       $main::defs{$name}{protocol_version} = $device->{protocol}->get_max_supported_protocol_version($device->{metadata}{protocol_version});
-      Log3 $name, 3, $name." Firmata Firmware Version: ".$device->{metadata}{firmware}." ".$device->{metadata}{firmware_version}." (using Protocol Version: ".$main::defs{$name}{protocol_version}.")";
+      Log3 $name, 3, "$name: Firmata Firmware Version ".$device->{metadata}{firmware}." ".$device->{metadata}{firmware_version}." (using Protocol Version ".$main::defs{$name}{protocol_version}.")";
       # query capabilities
       $device->analog_mapping_query();
       $device->capability_query();
@@ -699,7 +796,7 @@ sub FRM_SetupDevice($) {
       # protocol and firmware version still missing
       if ($hash->{SETUP_TRIES} < 3) {
         # requery versions
-        Log3 $name, 3, "$name querying Firmata versions";
+        Log3 $name, 3, "$name: querying Firmata versions";
         $device->protocol_version_query();
         $device->firmware_version_query();
         # restart setup
@@ -716,7 +813,7 @@ sub FRM_SetupDevice($) {
       my $deviceRestart = $device->{metadata}{protocol_version};
       if (!$deviceRestart && !$fhemRestart) {
         # probably a reconnect
-        Log3 $name, 3, "$name Firmata device has reconnected";
+        Log3 $name, 3, "$name: Firmata device has reconnected";
         #if ($skipSetupOnReconnect) {
         #  # skip capability queries and device setup, just reinit client modules
         #  $hash->{SETUP_STAGE} = 3;
@@ -726,14 +823,14 @@ sub FRM_SetupDevice($) {
         # clear old version and capability readings
         FRM_ClearConfiguration($hash);
         # query versions
-        Log3 $name, 3, "$name querying Firmata versions";
+        Log3 $name, 3, "$name: querying Firmata versions";
         $device->protocol_version_query();
         $device->firmware_version_query();
       }
     }
 
   } elsif  ($hash->{SETUP_STAGE} == 2) { # device capabilities
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, 'FRM_SetupDevice');
     InternalTimer(gettimeofday() + 1, 'FRM_SetupDevice', $hash, 0);
     my $capabilitiesReceived = $device->{metadata}{capabilities} && ($device->{metadata}{analog_mappings} || ($elapsed >= 5));
     if ($capabilitiesReceived) {
@@ -826,7 +923,7 @@ sub FRM_SetupDevice($) {
   } elsif  ($hash->{SETUP_STAGE} == 4) { # abort setup
     # device setup has failed, cleanup connection
     if (defined $hash->{SERVERSOCKET}) {
-      Log3 $name, 3, "$name no response from Firmata, closing TCP connection";
+      Log3 $name, 3, "$name: no response from Firmata, closing TCP connection";
       foreach my $e (sort keys %main::defs) {
         if (defined(my $dev = $main::defs{$e})) {
           if (defined($dev->{SNAME}) && ($dev->{SNAME} eq $hash->{NAME})) {
@@ -835,7 +932,7 @@ sub FRM_SetupDevice($) {
         }
       }
     } else {
-      Log3 $name, 3, "$name no response from Firmata, closing DevIo";
+      Log3 $name, 3, "$name: no response from Firmata, closing DevIo";
       DevIo_Disconnected($hash);
     }
     FRM_FirmataDevice_Close($hash);
@@ -845,7 +942,7 @@ sub FRM_SetupDevice($) {
 
   } elsif ($hash->{SETUP_STAGE} == 5) { # finish setup
     # terminate setup sequence
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, 'FRM_SetupDevice');
     delete $hash->{SETUP_START};
     delete $hash->{SETUP_STAGE};
     delete $hash->{SETUP_TRIES};
@@ -870,8 +967,7 @@ sub FRM_SetupDevice($) {
 
 =cut
 
-sub
-FRM_forall_clients($$$) {
+sub FRM_forall_clients {
   my ($hash,$fn,$args) = @_;
   foreach my $d ( sort keys %main::defs ) {
     if (   defined( $main::defs{$d} )
@@ -894,22 +990,21 @@ FRM_forall_clients($$$) {
 
 =cut
 
-sub
-FRM_Init_Client($@) {
+sub FRM_Init_Client {
   my ($chash,$args) = @_;
   if (!defined $args and defined $chash->{DEF}) {
     my @a = split("[ \t][ \t]*", $chash->{DEF});
     $args = \@a;
   }
   my $cname = $chash->{NAME};
-  my $iodev = defined($chash->{IODev})? $chash->{IODev}{NAME} : "?";
-  Log3 $iodev, 5, "$iodev initializing '$cname'";
-  if (!defined($main::modules{$main::defs{$cname}{TYPE}}{InitFn})) {
-    Log3 $iodev, 5, "$iodev error initializing '$cname': InitFn not implemented";
-  }
-  my $ret = CallFn($cname,"InitFn",$chash,$args);
-  if ($ret) {
-    Log3 $iodev,2,"$iodev error initializing '$cname': $ret";
+  if (defined($main::modules{$main::defs{$cname}{TYPE}}{InitFn})) {
+    my $ret = CallFn($cname,"InitFn",$chash,$args);
+    if ($ret) {
+      readingsSingleUpdate($chash, 'state', "error: $ret", 1);
+      Log3 $cname, 1, "$cname ERROR: init failed, $ret";
+    }
+  } else {
+    Log3 $cname, 5, "$cname: InitFn not implemented";
   }
 }
 
@@ -918,35 +1013,34 @@ FRM_Init_Client($@) {
   Returns:
     undef on success or error message
 
-  Exception:
-    if calling InitFn of client $0 raises an exception
-
   Description:
     FRM public client function ($chash is FRM client)
     register FRM client at IODev for I/O operations and set requested pin mode in Firmata device
 
 =cut
 
-sub
-FRM_Init_Pin_Client($$$) {
-  my ($chash,$args,$mode) = @_;
-  my $u = "wrong syntax: define <name> FRM_XXX pin";
-  return $u unless defined $args and int(@$args) > 0;
-  my $pin = @$args[0];
+sub FRM_Init_Pin_Client {
+  my ($chash, $args, $mode) = @_;
+  my $cname = $chash->{NAME};
 
+  return "error: pin not specified" unless defined $args && scalar(@$args) > 0;
+  return "error: pin mode not specified" unless defined($mode);
+
+  my $pin = @$args[0];
   $chash->{PIN} = $pin;
   eval {
     FRM_Client_AssignIOPort($chash);
-    FRM_Client_FirmataDevice($chash)->pin_mode($pin,$mode);
+    FRM_Client_FirmataDevice($chash)->pin_mode($pin, $mode);
   };
   if ($@) {
-    readingsSingleUpdate($chash, 'state', "error initializing: pin $pin", 1);
-    $@ =~ /^(.*)( at.*FHEM.*)$/;
-    return $1;
+    my $ret = FRM_Catch($@);
+    readingsSingleUpdate($chash, 'state', "error: $ret", 1);
+    return $ret;
   }
-  my $name = $chash->{NAME};
-  my $iodev = defined($chash->{IODev})? $chash->{IODev}{NAME} : "?";
-  Log3 $name, 5, "$name initialized pin $pin of $iodev";
+
+  my $ioDevName = defined($chash->{IODev})? $chash->{IODev}{NAME} : "?";
+  Log3 $cname, 5, "$cname: registered pin $pin at $ioDevName";
+
   return undef;
 }
 
@@ -964,22 +1058,28 @@ FRM_Init_Pin_Client($$$) {
 
 =cut
 
-sub
-FRM_Client_Define($$) {
+sub FRM_Client_Define {
   my ($chash, $def) = @_;
-  my @a = split("[ \t][ \t]*", $def);
+  my $cname = $chash->{NAME};
 
-  readingsSingleUpdate($chash, 'state', 'defined', 1);
+  # check if Device::Firmata module is properly installed
+  if ($FRM_DEVICE_FIRMATA_OK > 0) {
+    readingsSingleUpdate($chash, 'state', 'defined', 1);
+  } else {
+    $main::defs{$cname}{IODev_ERROR} = 1;
+    readingsSingleUpdate($chash, 'state', 'error: Perl module Device::Firmata not properly installed', 1);
+  }
 
   if ($main::init_done) {
     eval {
+      my @a = split("[ \t][ \t]*", $def);
       FRM_Init_Client($chash,[@a[2..scalar(@a)-1]]);
     };
     if ($@) {
-      $@ =~ /^(.*)( at.*FHEM.*)$/;
-      return $1;
+      return FRM_Catch($@);
     }
   }
+
   return undef;
 }
 
@@ -994,22 +1094,23 @@ FRM_Client_Define($$) {
 
 =cut
 
-sub
-FRM_Client_Undef($$) {
+sub FRM_Client_Undef {
   my ($chash, $name) = @_;
+
+  # try to change pin mode to analog input or digital input with pullup disabled
   my $pin = $chash->{PIN};
   eval {
     my $firmata = FRM_Client_FirmataDevice($chash);
-    $firmata->pin_mode($pin,PIN_ANALOG);
+    $firmata->pin_mode($pin, Device::Firmata::Constants->PIN_ANALOG);
   };
   if ($@) {
     eval {
       my $firmata = FRM_Client_FirmataDevice($chash);
-      $firmata->pin_mode($pin,PIN_INPUT);
-      # @TODO PIN_PULLUP
+      $firmata->pin_mode($pin, Device::Firmata::Constants->PIN_INPUT);
       $firmata->digital_write($pin,0);
     };
   }
+
   return undef;
 }
 
@@ -1021,8 +1122,7 @@ FRM_Client_Undef($$) {
 
 =cut
 
-sub
-FRM_Client_Unassign($) {
+sub FRM_Client_Unassign {
   my ($chash) = @_;
   delete $chash->{IODev} if defined $chash->{IODev};
   readingsSingleUpdate($chash, 'state', 'defined', 1);
@@ -1039,21 +1139,22 @@ FRM_Client_Unassign($) {
 
 =cut
 
-sub
-FRM_Client_AssignIOPort($@) {
-  my ($chash,$iodev) = @_;
-  my $name = $chash->{NAME};
+sub FRM_Client_AssignIOPort {
+  my ($chash,$ioDevName) = @_;
+  my $cname = $chash->{NAME};
 
-  # use proposed $iodev or assigned {IODev} (FHEM will additionally check IODev attribute if not defined)
-  $iodev = defined($iodev)? $iodev : (defined($chash->{IODev})? $chash->{IODev}{NAME} : undef);
-  Log3 $name, 5, "$name FRM_Client_AssignIOPort before IODev " . (defined($chash->{IODev})? $chash->{IODev}{NAME} : "-" ) . " -> " . (defined($iodev)? $iodev : "?");
-  AssignIoPort($chash, $iodev);
-  die "unable to assign IODev to '$name'" unless defined ($chash->{IODev});
-  Log3 $name, 5, "$name FRM_Client_AssignIOPort after IODev $chash->{IODev}{NAME}";
+  # use proposed $ioDevName or assigned {IODev} (FHEM will additionally check IODev attribute if not defined)
+  $ioDevName = defined($ioDevName)? $ioDevName : (defined($chash->{IODev})? $chash->{IODev}{NAME} : undef);
+  Log3 $cname, 5, "$cname: FRM_Client_AssignIOPort before IODev " . (defined($chash->{IODev})? $chash->{IODev}{NAME} : "-" ) . " -> " . (defined($ioDevName)? $ioDevName : "?");
+  if (!defined($ioDevName) || AttrVal($ioDevName, 'disable', 0) == 0) {
+    AssignIoPort($chash, $ioDevName);
+  }
+  die "unable to assign IODev to $cname" unless defined($chash->{IODev});
+  Log3 $cname, 5, "$cname: FRM_Client_AssignIOPort after IODev $chash->{IODev}{NAME}";
 
   if (defined($chash->{IODev}->{SNAME})) {
     $chash->{IODev} = $main::defs{$chash->{IODev}->{SNAME}};
-    $attr{$name}{IODev} = $chash->{IODev}{NAME};
+    $attr{$cname}{IODev} = $chash->{IODev}{NAME};
   }
 
   foreach my $d ( sort keys %main::defs ) {
@@ -1065,8 +1166,8 @@ FRM_Client_AssignIOPort($@) {
         && defined( $chash->{PIN})
         && grep {$_ == $chash->{PIN}} split(" ",$dev->{PIN}) ) {
           delete $chash->{IODev};
-          delete $attr{$name}{IODev};
-          die "Device '$main::defs{$d}{NAME}' already defined for pin $chash->{PIN}";
+          delete $attr{$cname}{IODev};
+          die "pin $chash->{PIN} already assigned to device '$main::defs{$d}{NAME}'";
         }
     }
   }
@@ -1078,19 +1179,23 @@ FRM_Client_AssignIOPort($@) {
     perl-firmata handle for given FRM client
 
   Exception:
-    if IODev is not defined or not connected
+    if IODev is not defined, disabled or not connected
 
   Description:
     FRM public client function ($chash is FRM client, $iodev is FRM)
 
 =cut
 
-sub FRM_Client_FirmataDevice($) {
+sub FRM_Client_FirmataDevice {
   my $chash = shift;
-  my $iodev = $chash->{IODev};
-  die $chash->{NAME}." no IODev assigned" unless defined $iodev;
-  die $chash->{NAME}.", ".$iodev->{NAME}." is not connected" unless (defined $iodev->{FirmataDevice} and (defined $iodev->{FD} or ($^O=~/Win/ and defined $iodev->{USBDev})));
-  return $iodev->{FirmataDevice};
+  my $ioDev = $chash->{IODev};
+
+  die "no IODev assigned" unless defined $ioDev;
+  my $ioDevName = $ioDev->{NAME};
+  die "IODev ".$ioDevName." is disabled" unless AttrVal($ioDevName, 'disable', 0) == 0;
+  die "IODev ".$ioDevName." is not connected" unless (defined $ioDev->{FirmataDevice} and (defined $ioDev->{FD} or ($^O=~/Win/ and defined $ioDev->{USBDev})));
+
+  return $ioDev->{FirmataDevice};
 }
 
 =item FRM_Catch($)
@@ -1103,14 +1208,52 @@ sub FRM_Client_FirmataDevice($) {
 
 =cut
 
-sub FRM_Catch($) {
+sub FRM_Catch {
   my $exception = shift;
   if ($exception) {
-    $exception =~ /^(.*)( at.*FHEM.*)$/;
+    $exception =~ /^(.*)( at.*[FHEM|perl].*)/;
     return $1;
   }
   return undef;
 }
+
+sub FRM_String_Write;
+
+=item FRM_Monitor($)
+
+  Returns:
+    undef
+
+  Description:
+    FRM internal timer for conneciton monitoring ($hash is FRM)
+
+=cut
+
+sub FRM_Monitor {
+  my ($hash) =  @_;
+  my $name = $hash->{NAME};
+  RemoveInternalTimer($hash, 'FRM_Monitor');
+
+  # send ping message to Firmata device
+  if (AttrVal($name, 'disable', 0) == 0) {
+    FRM_String_Write($hash, 'ping');
+  }
+
+  # close connection if socket is disconnected
+  if (defined($hash->{SocketDevice}) && $hash->{SocketDevice}{STATE} eq 'disconnected' && $hash->{STATE} eq 'Initialized') {
+    FRM_Tcp_Connection_Close($hash->{SocketDevice});
+    FRM_FirmataDevice_Close($hash);
+  }
+
+  # schedule next monitor call
+  my $pingInterval = AttrVal($name, 'ping-interval', 0);
+  if (looks_like_number($pingInterval) && $pingInterval > 0) {
+    InternalTimer(gettimeofday() + $pingInterval/1000.0, 'FRM_Monitor', $hash, 0);
+  }
+
+  return undef;
+}
+
 
 =item Firmata_IO
 
@@ -1121,7 +1264,7 @@ sub FRM_Catch($) {
 
 package Firmata_IO;
 
-sub new($$) {
+sub new($$$) {
   my ($class,$hash,$name) = @_;
   return bless {
     hash => $hash,
@@ -1129,19 +1272,19 @@ sub new($$) {
   }, $class;
 }
 
-sub data_write($$) {
+sub data_write {
   my ( $self, $buf ) = @_;
   my $hash = $self->{hash};
-  main::Log3 $self->{name},5,"$self->{name} FRM:>".unpack "H*",$buf;
+  main::Log3 $self->{name}, 5, "$self->{name} FRM:>".unpack "H*",$buf;
   main::DevIo_SimpleWrite($hash,$buf,undef);
 }
 
-sub data_read($$) {
+sub data_read {
   my ( $self, $bytes ) = @_;
   my $hash = $self->{hash};
   my $string = main::DevIo_SimpleRead($hash);
   if (defined $string ) {
-    main::Log3 $self->{name},5,"$self->{name} FRM:<".unpack "H*",$string;
+    main::Log3 $self->{name}, 5, "$self->{name} FRM:<".unpack "H*",$string;
   }
   return $string;
 }
@@ -1185,11 +1328,11 @@ package main;
 
 =cut
 
-sub FRM_I2C_Write($$)
+sub FRM_I2C_Write
 {
   my ($hash, $package) = @_;
   my $name = $hash->{NAME};
-  
+
   if (defined($package) && defined($package->{i2caddress})) {
     if (FRM_is_firmata_connected($hash)) {
       my $firmata = $hash->{FirmataDevice};
@@ -1217,7 +1360,7 @@ sub FRM_I2C_Write($$)
       FRM_forall_clients($hash, \&FRM_i2c_update_device, $package);
     }
   }
-  
+
   return undef;
 }
 
@@ -1231,10 +1374,11 @@ sub FRM_I2C_Write($$)
 
 =cut
 
-sub FRM_i2c_observer($$) {
+sub FRM_i2c_observer {
   my ($data, $hash) = @_;
-  
-  Log3 $hash->{NAME}, 5, "onI2CMessage address: '" . $data->{address} . "', register: '" . $data->{register} . "' data: [" . join(',', @{$data->{data}}) . "]";
+  my $name = $hash->{NAME};
+
+  Log3 $name, 5, "$name: onI2CMessage address: '" . $data->{address} . "', register: '" . $data->{register} . "' data: [" . join(',', @{$data->{data}}) . "]";
 
   my $sendStat = defined($hash->{I2C_ERROR})? $hash->{I2C_ERROR} : "Ok";
   my %package = (i2caddress => $data->{address},
@@ -1242,7 +1386,7 @@ sub FRM_i2c_observer($$) {
                  reg        => $data->{register},
                  nbyte      => scalar(@{$data->{data}}),
                  received   => join (' ', @{$data->{data}}),
-                 $hash->{NAME} . '_SENDSTAT' => "$sendStat"
+                 $name . '_SENDSTAT' => "$sendStat"
                 );
   FRM_forall_clients($hash, \&FRM_i2c_update_device, \%package);
 }
@@ -1258,12 +1402,43 @@ sub FRM_i2c_observer($$) {
 
 =cut
 
-sub FRM_i2c_update_device($$) {
+sub FRM_i2c_update_device {
   my ($chash, $package) = @_;
 
   if (defined($chash->{I2C_Address}) && $chash->{I2C_Address} eq $package->{i2caddress}) {
     CallFn($chash->{NAME}, "I2CRecFn", $chash, $package);
   }
+}
+
+=item FRM_String_Write
+
+  Returns:
+    number of bytes send
+
+  Description:
+    send string message to Firmata device ($hash is FRM)
+
+=cut
+
+sub FRM_String_Write {
+  my ($hash, $string) =  @_;
+  my $name = $hash->{NAME};
+
+  # send string message to Firmata device
+  if (FRM_is_firmata_connected($hash) && $hash->{STATE} eq 'Initialized') {
+    my $firmata = $hash->{FirmataDevice};
+    my $protocolVersion = $firmata->{metadata}{protocol_version};
+    if (defined($protocolVersion) && defined($Device::Firmata::Constants::COMMANDS->{$protocolVersion})) {
+      my @inBytes = unpack("C*", $string);
+      my @outBytes;
+      Device::Firmata::Protocol->can('push_array_as_two_7bit')->(\@inBytes, \@outBytes);
+      return $firmata->sysex_send($Device::Firmata::Constants::COMMANDS->{$protocolVersion}->{STRING_DATA}, @outBytes);
+    }
+  } else {
+    Log3 $name, 5, "$name: not connected, string message not sent";
+  }
+
+  return 0;
 }
 
 =item FRM_string_observer
@@ -1276,15 +1451,16 @@ sub FRM_i2c_update_device($$) {
 
 =cut
 
-sub FRM_string_observer($$) {
-  my ($string,$hash) = @_;
-  my $errorExclude = AttrVal($hash->{NAME}, "errorExclude", undef);
+sub FRM_string_observer {
+  my ($string, $hash) = @_;
+  my $name = $hash->{NAME};
+  my $errorExclude = AttrVal($name, "errorExclude", undef);
   if (defined($errorExclude) && length($errorExclude) > 0 && ($string =~ $errorExclude)) {
-    Log3 $hash->{NAME},5,"received String_data: ".$string;
+    Log3 $name, 5, "$name: received message '" . $string . "'";
     readingsSingleUpdate($hash,"stringMessage",$string,1);
   } else {
-    Log3 $hash->{NAME},3,"received String_data: ".$string;
-    readingsSingleUpdate($hash,"error",$string,1);
+    Log3 $name, 3, "$name: received message '" . $string . "'";
+    readingsSingleUpdate($hash, "error", $string, 1);
     if ($string =~ "I2C.*") {
       $hash->{I2C_ERROR} = substr($string, 5);
     }
@@ -1301,7 +1477,7 @@ sub FRM_string_observer($$) {
 
 =cut
 
-sub FRM_serial_observer($$) {
+sub FRM_serial_observer {
   my ($data,$hash) = @_;
   #Log3 $hash->{NAME},5,"onSerialMessage port: '".$data->{port}."' data: [".(join(',',@{$data->{data}}))."]";
   FRM_forall_clients($hash,\&FRM_serial_update_device,$data);
@@ -1318,7 +1494,7 @@ sub FRM_serial_observer($$) {
 
 =cut
 
-sub FRM_serial_update_device($$) {
+sub FRM_serial_update_device {
   my ($chash,$data) = @_;
 
   if (defined $chash->{IODevPort} and $chash->{IODevPort} eq $data->{port}) {
@@ -1340,7 +1516,7 @@ sub FRM_serial_update_device($$) {
 
 =cut
 
-sub FRM_serial_setup($) {
+sub FRM_serial_setup {
   my ($hash) = @_;
 
   foreach my $port ( keys %{$hash->{SERIAL}} ) {
@@ -1361,7 +1537,7 @@ sub FRM_serial_setup($) {
 
 =cut
 
-sub FRM_poll($) {
+sub FRM_poll {
   my ($hash) = @_;
   if (defined $hash->{SocketDevice} and defined $hash->{SocketDevice}->{FD}) {
     my ($rout, $rin) = ('', '');
@@ -1404,9 +1580,9 @@ sub FRM_poll($) {
 
 =cut
 
-sub FRM_OWX_Init($$) {
+sub FRM_OWX_Init {
   my ($chash,$args) = @_;
-  my $ret = FRM_Init_Pin_Client($chash,$args,PIN_ONEWIRE);
+  my $ret = FRM_Init_Pin_Client($chash, $args, Device::Firmata::Constants->PIN_ONEWIRE);
   return $ret if (defined $ret);
   eval {
     my $firmata = FRM_Client_FirmataDevice($chash);
@@ -1419,7 +1595,7 @@ sub FRM_OWX_Init($$) {
       $firmata->onewire_config($pin,1);
     }
   };
-  return GP_Catch($@) if ($@);
+  return FRM_Catch($@) if ($@);
   ReadingsSingleUpdate($chash, 'state', 'Initialized', 1);
   InternalTimer(gettimeofday()+10, "OWX_Discover", $chash,0);
   return undef;
@@ -1435,7 +1611,7 @@ sub FRM_OWX_Init($$) {
 
 =cut
 
-sub FRM_OWX_observer($$)
+sub FRM_OWX_observer
 {
   my ( $data,$chash ) = @_;
   my $command = $data->{command};
@@ -1485,7 +1661,7 @@ sub FRM_OWX_observer($$)
 
 =cut
 
-sub FRM_OWX_device_to_firmata($)
+sub FRM_OWX_device_to_firmata
 {
   my @device;
   foreach my $hbyte (unpack "A2xA2A2A2A2A2A2xA2", shift) {
@@ -1505,7 +1681,7 @@ sub FRM_OWX_device_to_firmata($)
 
 =cut
 
-sub FRM_OWX_firmata_to_device($)
+sub FRM_OWX_firmata_to_device
 {
   my $device = shift;
   return sprintf ("%02X.%02X%02X%02X%02X%02X%02X.%02X",$device->{family},@{$device->{identity}},$device->{crc});
@@ -1518,7 +1694,7 @@ sub FRM_OWX_firmata_to_device($)
 
 =cut
 
-sub FRM_OWX_Verify($$) {
+sub FRM_OWX_Verify {
   my ($chash,$dev) = @_;
   foreach my $found (@{$chash->{DEVS}}) {
     if ($dev eq $found) {
@@ -1535,8 +1711,9 @@ sub FRM_OWX_Verify($$) {
 
 =cut
 
-sub FRM_OWX_Alarms($) {
+sub FRM_OWX_Alarms {
   my ($chash) = @_;
+  my $cname = $chash->{NAME};
 
   my $ret = eval {
     my $firmata = FRM_Client_FirmataDevice($chash);
@@ -1558,7 +1735,7 @@ sub FRM_OWX_Alarms($) {
     return 1;
   };
   if ($@) {
-    Log3 $chash->{NAME},4,"FRM_OWX_Alarms: ".GP_Catch($@);
+    Log3 $cname, 4, "$cname: FRM_OWX_Alarms: ".FRM_Catch($@);
     return 0;
   }
   return $ret;
@@ -1571,8 +1748,10 @@ sub FRM_OWX_Alarms($) {
 
 =cut
 
-sub FRM_OWX_Reset($) {
+sub FRM_OWX_Reset {
   my ($chash) = @_;
+  my $cname = $chash->{NAME};
+
   my $ret = eval {
     my $firmata = FRM_Client_FirmataDevice($chash);
     my $pin     = $chash->{PIN};
@@ -1583,7 +1762,7 @@ sub FRM_OWX_Reset($) {
     return 1;
   };
   if ($@) {
-    Log3 $chash->{NAME},4,"FRM_OWX_Alarms: ".GP_Catch($@);
+    Log3 $cname, 4, "$cname: FRM_OWX_Alarms: ".FRM_Catch($@);
     return 0;
   }
   return $ret;
@@ -1596,8 +1775,9 @@ sub FRM_OWX_Reset($) {
 
 =cut
 
-sub FRM_OWX_Complex($$$$) {
-  my ( $chash, $owx_dev, $data, $numread ) = @_;
+sub FRM_OWX_Complex {
+  my ($chash, $owx_dev, $data, $numread) = @_;
+  my $cname = $chash->{NAME};
 
   my $res = "";
 
@@ -1657,7 +1837,7 @@ sub FRM_OWX_Complex($$$$) {
     return $res;
   };
   if ($@) {
-    Log3 $chash->{NAME},4,"FRM_OWX_Alarms: ".GP_Catch($@);
+    Log3 $cname, 4, "$cname: FRM_OWX_Alarms: ".FRM_Catch($@);
     return 0;
   }
   return $ret;
@@ -1675,8 +1855,9 @@ sub FRM_OWX_Complex($$$$) {
 
 =cut
 
-sub FRM_OWX_Discover($) {
+sub FRM_OWX_Discover {
   my ($chash) = @_;
+  my $cname = $chash->{NAME};
 
   my $ret = eval {
     my $firmata = FRM_Client_FirmataDevice($chash);
@@ -1699,7 +1880,7 @@ sub FRM_OWX_Discover($) {
     return 1;
   };
   if ($@) {
-    Log3 $chash->{NAME},4,"FRM_OWX_Alarms: ".GP_Catch($@);
+    Log3 $cname, 4, "$cname: FRM_OWX_Alarms: ".FRM_Catch($@);
     return 0;
   }
   return $ret;
@@ -1716,17 +1897,19 @@ sub FRM_OWX_Discover($) {
 
 =cut
 
-sub FRM_Serial_Open($) {
+sub FRM_Serial_Open {
   my ($chash) = @_;
+  my $cname = $chash->{NAME};
+  my $ioDevName = $chash->{IODev}{NAME};
 
   if (!defined $chash->{IODevPort} || !defined $chash->{IODevParameters}) {
-    Log3 $chash->{NAME},3,"$chash->{IODev}{NAME} Serial_Open: serial port or baudrate not defined by $chash->{NAME}";
+    Log3 $cname, 3, "$ioDevName Serial_Open: serial port or baudrate not defined by $cname";
     return 0;
   }
 
-  $chash->{IODev}{SERIAL}{$chash->{IODevPort}} = $chash->{NAME};
+  $chash->{IODev}{SERIAL}{$chash->{IODevPort}} = $cname;
 
-  Log3 $chash->{NAME},5,"$chash->{IODev}{NAME} Serial_Open: serial port $chash->{IODevPort} registered for $chash->{NAME}";
+  Log3 $cname, 5, "$ioDevName Serial_Open: serial port $chash->{IODevPort} registered for $cname";
 
   return FRM_Serial_Setup($chash);
 }
@@ -1742,13 +1925,15 @@ sub FRM_Serial_Open($) {
 
 =cut
 
-sub FRM_Serial_Setup($) {
+sub FRM_Serial_Setup {
   my ($chash) = @_;
+  my $cname = $chash->{NAME};
+  my $ioDevName = $chash->{IODev}{NAME};
 
   if (FRM_is_firmata_connected($chash->{IODev})) {
     my $firmata = FRM_Client_FirmataDevice($chash);
-    if (!defined $firmata ) {
-      Log3 $chash->{NAME},3,"$chash->{IODev}{NAME} Serial_Setup: no Firmata device available";
+    if (!defined $firmata) {
+      Log3 $cname, 3, "$ioDevName Serial_Setup: no Firmata device available";
       return 0;
     }
 
@@ -1759,7 +1944,7 @@ sub FRM_Serial_Setup($) {
       if ($port > 7) {
         # software serial port, get serial pins from attribute
         my $err;
-        my $serialattr = AttrVal($chash->{IODev}{NAME}, "software-serial-config", undef);
+        my $serialattr = AttrVal($ioDevName, "software-serial-config", undef);
         if (defined $serialattr) {
           my @a = split(":", $serialattr);
           if (scalar @a == 3 && $a[0] == $port) {
@@ -1775,7 +1960,7 @@ sub FRM_Serial_Setup($) {
           $err = "Error, attribute software-serial-config required for using software serial port $port";
         }
         if ($err) {
-          Log3 $chash->{NAME},2,"$chash->{IODev}{NAME}: $err";
+          Log3 $cname, 2, "$ioDevName ERROR: $err";
           return 0;
         }
       } else {
@@ -1793,7 +1978,7 @@ sub FRM_Serial_Setup($) {
           }
         }
         if (!defined $rxPin || !defined $txPin) {
-          Log3 $chash->{NAME},3,"$chash->{IODev}{NAME} Serial_Setup: serial pins of port $port not available on Arduino";
+          Log3 $cname, 3, "$ioDevName Serial_Setup: serial pins of port $port not available on Arduino";
           return 0;
         }
         $chash->{PIN_RX} = $rxPin;
@@ -1804,9 +1989,9 @@ sub FRM_Serial_Setup($) {
       }
       $firmata->observe_serial($port, \&FRM_serial_observer, $chash->{IODev});
       $firmata->serial_read($port, 0); # continuously read and send all available bytes
-      Log3 $chash->{NAME},5,"$chash->{IODev}{NAME} Serial_Setup: serial port $chash->{IODevPort} opened with $baudrate baud for $chash->{NAME}";
+      Log3 $cname, 5, "$ioDevName Serial_Setup: serial port $chash->{IODevPort} opened with $baudrate baud for $cname";
     } else {
-      Log3 $chash->{NAME},3,"$chash->{IODev}{NAME} Serial_Setup: invalid baudrate definition $chash->{IODevParameters} for port $port by $chash->{NAME}";
+      Log3 $cname, 3, "$ioDevName Serial_Setup: invalid baudrate definition $chash->{IODevParameters} for port $port by $cname";
       return 0;
     }
   }
@@ -1824,7 +2009,7 @@ sub FRM_Serial_Setup($) {
 
 =cut
 
-sub FRM_Serial_Write($$) {
+sub FRM_Serial_Write {
   my ($chash, $msg) = @_;
 
   my $firmata = FRM_Client_FirmataDevice($chash);
@@ -1853,7 +2038,7 @@ sub FRM_Serial_Write($$) {
 
 =cut
 
-sub FRM_Serial_Close($) {
+sub FRM_Serial_Close {
   my ($chash) = @_;
 
   my $port = $chash->{IODevPort};
@@ -1948,67 +2133,112 @@ sub FRM_Serial_Close($) {
     o removed unused FHEMWEB set/get text fields
     o moved I2C receive processing for FRM_I2C to FRM_I2C module
     o set I2C SENDSTAT to error if I2CWrtFn is called while not connected and propagate error by synchronously calling I2CRecFn
-    
+
+  10.05.2020 jensb
+    o code formatted
+    o new attribute "ping-interval"
+    o new set command "sendString"
+    o TCP socket close detection improved
+    o prototypes removed
+
+  23.08.2020 jensb
+    o check if Device::Firmata is installed and has min. version
+    o module help updated
+
+  09.09.2020 jensb
+    o added support for client module I2C_INA219
+    o set argument verifier improved
+    o fix assigning random FRM-IODev to FRM client when requested FRM-IODev is disabled
+    o fix state showing defined when disabled after FHEM restart
+
 =cut
 
+
 =pod
+
+=head1 FHEM COMMANDREF METADATA
+
+=over
+
 =item device
+
 =item summary Firmata device gateway
+
 =item summary_DE Firmata Gateway
+
+=back
+
+=head1 INSTALLATION AND CONFIGURATION
+
 =begin html
 
 <a name="FRM"></a>
 <h3>FRM</h3>
 <ul>
-  This module enables FHEM to communicate with a device that implements the <a href="http://www.firmata.org">Firmata</a> protocol
-  (e.g. an <a href="http://www.arduino.cc">Arduino</a>).<br><br>
+  This module enables FHEM to communicate with a device that implements the <a href="http://www.firmata.org">Firmata</a>
+  protocol (e.g. an <a href="http://www.arduino.cc">Arduino</a>).<br><br>
 
   The connection between FHEM and the Firmata device can be established by serial port, USB, LAN or WiFi.<br><br>
 
   A single FRM device can serve multiple FRM clients from this list:<br><br>
-  <a href="#FRM_IN">FRM_IN</a>,
-  <a href="#FRM_OUT">FRM_OUT</a>,
-  <a href="#FRM_AD">FRM_AD</a>,
-  <a href="#FRM_PWM">FRM_PWM</a>,
-  <a href="#FRM_I2C">FRM_I2C</a>,
-  <a href="#FRM_SERVO">FRM_SERVO</a>,
-  <a href="#FRM_RGB">FRM_RGB</a>,
-  <a href="#FRM_ROTENC">FRM_ROTENC</a>,
-  <a href="#FRM_STEPPER">FRM_STEPPER</a>,
-  <a href="#FRM_LCD">FRM_LCD</a>,
-  <a href="#OWX">OWX</a>,
-  <a href="#I2C_LCD">I2C_LCD</a>,
+
+  <a href="#I2C_BH1750">I2C_BH1750</a>,
+  <a href="#I2C_BME280">I2C_BME280</a>,
+  <a href="#I2C_BMP180">I2C_BMP180</a>,
   <a href="#I2C_DS1307">I2C_DS1307</a>,
-  <a href="#I2C_PCA9532">I2C_PCA9532</a>,
-  <a href="#I2C_PCA9685">I2C_PCA9685</a>,
-  <a href="#I2C_PCF8574">I2C_PCF8574</a>,
+  <a href="#I2C_K30">I2C_K30</a>,
+  <a href="#I2C_LCD">I2C_LCD</a>,
+  <a href="#I2C_LM75A">I2C_LM75A</a>,
   <a href="#I2C_MCP23008">I2C_MCP23008</a>,
   <a href="#I2C_MCP23017">I2C_MCP23017</a>,
   <a href="#I2C_MCP342x">I2C_MCP342x</a>,
+  <a href="#I2C_PCA9532">I2C_PCA9532</a>,
+  <a href="#I2C_PCA9685">I2C_PCA9685</a>,
+  <a href="#I2C_PCF8574">I2C_PCF8574</a>,
   <a href="#I2C_SHT21">I2C_SHT21</a>,
   <a href="#I2C_SHT3x">I2C_SHT3x</a>,
-  <a href="#I2C_BME280">I2C_BME280</a>,
-  <a href="#I2C_BMP180">I2C_BMP180</a>,
-  <a href="#I2C_BH1750">I2C_BH1750</a>,
   <a href="#I2C_TSL2561">I2C_TSL2561</a>,
-  <a href="#I2C_K30">I2C_K30</a>,
-  <a href="#I2C_LM75A">I2C_LM75A</a><br><br>
+  <a href="#FRM_AD">FRM_AD</a>,
+  <a href="#FRM_I2C">FRM_I2C</a>,
+  <a href="#FRM_IN">FRM_IN</a>,
+  <a href="#FRM_LCD">FRM_LCD</a>,
+  <a href="#FRM_OUT">FRM_OUT</a>,
+  <a href="#FRM_PWM">FRM_PWM</a>,
+  <a href="#FRM_RGB">FRM_RGB</a>,
+  <a href="#FRM_ROTENC">FRM_ROTENC</a>,
+  <a href="#FRM_SERVO">FRM_SERVO</a>,
+  <a href="#FRM_STEPPER">FRM_STEPPER</a>,
+  <a href="#OWX">OWX</a>,
+  <a href="#OWX">OWX_ASYNC</a> <br><br>
 
   Each client stands for a pin of the Firmata device configured for a specific use
   (digital/analog in/out) or an integrated circuit connected to Firmata device by I2C.<br><br>
 
-  Note: This module is based on the Perl module <a href="https://github.com/jnsbyr/perl-firmata">Device::Firmata</a>
-  (perl-firmata). A suitable version of perl-firmata is distributed with FHEM (see subdirectory FHEM/lib/Device/Firmata).
-  You can download the latest version of perl-firmata <a href="https://github.com/jnsbyr/perl-firmata/archive/master.zip">
-  as a single zip</a> file from github.<br><br>
-
-  Note: This module may require the Device::SerialPort or Win32::SerialPort module if you attach the device via serial port
-  or USB and the operating system sets unsuitable default parameters for serial devices.<br><br>
-
   <a name="FRMdefine"></a>
   <b>Define</b><br><br>
 
-  <code>define &lt;name&gt; FRM {&lt;device&gt; | &lt;port&gt; [global]}</code> <br><br>
+  Prerequisites:<br><br>
+
+  (1) Install version 0.69 or higher of the Perl module
+  <a href="https://metacpan.org/pod/Device::Firmata">Device::Firmata</a>,
+  e.g. via OS command line:<br><br>
+
+  <code>cpan install Device::Firmata</code><br><br>
+
+  Note that this Perl module was distributed as part of FHEM until August 2020 and must
+  now be installed and updated separately. If a version of the Perl module still exists
+  in the subdir FHEM/lib/Device it must be removed.<br><br>
+
+  (2) Install the Perl module Device::SerialPort (Linux platform) or Win32::SerialPort (Windows
+  platform) if you attach the device via serial port or USB, e.g. via OS command line:<br><br>
+
+  <code>cpan install Device::SerialPort</code> or<br>
+  <code>cpan install Win32::SerialPort</code><br><br>
+
+  Additional information on how to install Perl modules can be found in the
+  <a href="https://wiki.fhem.de/wiki/CPAN">FHEM Wiki</a>.
+
+  <code>define &lt;name&gt; FRM {&lt;device&gt; | &lt;port&gt; [global]}</code><br><br>
 
   <ul>
   <li>serial and USB connected devices:<br><br>
@@ -2073,6 +2303,11 @@ sub FRM_Serial_Close($) {
   <li>
     <code>set &lt;name&gt; reset</code><br>
     performs a software reset on the Firmata device and disconnects form the Firmata device - after the Firmata device reconnects the attached FRM client devices are reinitialized
+  </li><br>
+
+  <li>
+    <code>set &lt;name&gt; sendString &lt;message&gt;</code><br>
+    sends a string message to the the Firmata device
   </li>
   </ul>
   <br><br>
@@ -2119,6 +2354,22 @@ sub FRM_Serial_Close($) {
 
       <li>disable {0|1}, default: 0<br>
       Disables this devices if set to 1.
+      </li><br>
+
+      <li>ping-interval &lt;interval&gt;, default: disabled<br>
+      Configure the interval in milliseconds for FHEM to send the string message <i>ping</i> to the
+      firmata device (e.g. 10000 ms). The default Firmata device implementation will ignore this message
+      on receive.<br>
+      This should be enabled when FHEM is not configured to periodically send data to a network connected
+      Firmata device to be able to detect an abnormal device disconnect (e.g. caused by a device power
+      off). For the same reasons you can add <code>Firmata.sendString("ping");</code> to the sketch of
+      the Firmata device if the Firmata device is not configured to send data periodically to FHEM.
+      Note that this type of disconnect detection will not be immediate but will take several minutes
+      to trigger.
+      </li><br>
+
+      <li>dummy {0|1}, default: 0<br>
+      Will be set to 1 if device is set to <i>none</i>. Reserved for internal use, do not set manually!
       </li>
   </ul>
   <br><br>
@@ -2127,7 +2378,7 @@ sub FRM_Serial_Close($) {
   <b>Readings</b><br>
   <ul>
       <li>state<br>
-          Possible values are: <i>defined | disabled</i> and depending on the connection type:<br>
+          Possible values are: <i>defined | disabled | error</i> and depending on the connection type:<br>
           serial: <i>opened | connected | Initialized | disconnected</i><br>
           network: <i>listening | connected | Initialized</i>
       </li><br>
@@ -2147,7 +2398,11 @@ sub FRM_Serial_Close($) {
   <b>Internals</b><br>
   <ul>
       <li><code>DRIVER_VERSION</code><br>
-          Version of the Perl module Device::Firmata (perl-firmata), should be 0.63 or higher.
+          Version of the Perl module Device::Firmata.
+      </li><br>
+
+      <li><code>DRIVER_STATUS</code><br>
+          Compatibility info of the Perl module Device::Firmata.
       </li><br>
 
       <li><code>protocol_version</code><br>
@@ -2230,4 +2485,15 @@ sub FRM_Serial_Close($) {
 <br>
 
 =end html
+
+=begin html_DE
+
+<a name="FRM"></a>
+<h3>FRM_OUT</h3>
+<ul>
+  Die Modulbeschreibung von FRM gibt es nur auf <a href="commandref.html#FRM">Englisch</a>. <br>
+</ul> <br>
+
+=end html_DE
+
 =cut

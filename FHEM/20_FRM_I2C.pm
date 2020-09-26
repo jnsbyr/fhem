@@ -1,5 +1,5 @@
 ################################################################################
-# $Id: 20_FRM_I2C.pm 5927 2018-12-29 17:32:00Z jensb $
+# $Id: 20_FRM_I2C.pm ? 2020-09-21 17:40:00Z jensb $
 ################################################################################
 
 =encoding UTF-8
@@ -42,7 +42,6 @@ package main;
 use strict;
 use warnings;
 
-use Device::Firmata::Constants qw(:all);
 use Scalar::Util qw(looks_like_number);
 
 #add FHEM/lib to @INC if it's not already included. Should rather be in fhem.pl than here though...
@@ -56,12 +55,21 @@ BEGIN {
 
 #####################################
 
-sub
-FRM_I2C_Initialize($)
+# number of arguments
+my %sets = (
+  "register" => 2,
+);
+
+# number of arguments
+my %gets = (
+  "register" => 1,
+);
+
+sub FRM_I2C_Initialize
 {
   my ($hash) = @_;
 
-  $hash->{DefFn}    = "FRM_Client_Define";
+  $hash->{DefFn}    = "FRM_I2C_Define";
   $hash->{InitFn}   = "FRM_I2C_Init";
   $hash->{UndefFn}  = "FRM_I2C_Undef";
   $hash->{AttrFn}   = "FRM_I2C_Attr";
@@ -74,58 +82,77 @@ FRM_I2C_Initialize($)
   main::LoadModule("FRM");
 }
 
-sub
-FRM_I2C_Init($)
+sub FRM_I2C_Define
 {
-  my ($hash, $args) = @_;
-  my $name = $hash->{NAME};
+  my ($hash, $def) = @_;
 
+  # verify define arguments
   my $usage = "usage: define <name> FRM_I2C address register numbytes";
-  return $usage if (int(@$args) < 3);
+
+  my @a = split("[ \t]+", $def);
+  return $usage if (scalar(@a) < 5);
+  my $args = [@a[2..scalar(@a)-1]];
 
   $hash->{I2C_Address}       = @$args[0];
   $hash->{I2C_READ_REGISTER} = @$args[1];
   $hash->{I2C_READ_BYTES}    = @$args[2];
+
+  my $ret = FRM_Client_Define($hash, $def);
+  if ($ret) {
+    return $ret;
+  }
+  return undef;
+}
+
+sub FRM_I2C_Init
+{
+  my ($hash, $args) = @_;
+  my $name = $hash->{NAME};
+
+  if (defined($main::defs{$name}{IODev_ERROR})) {
+    return 'Perl module Device::Firmata not properly installed';
+  }
 
   # stop reading
   if ($main::init_done && defined($hash->{IODev})) {
     eval {
       FRM_Client_FirmataDevice($hash)->i2c_stopreading($hash->{I2C_Address});
     };
-  } 
-  
+  }
+
   # assign IODev
   eval {
     FRM_Client_AssignIOPort($hash);
   };
   if ($@) {
-    $@ =~ /^(.*)( at.*FHEM.*)/;
-    readingsSingleUpdate($hash, 'state', "error initializing IODev: $1", 1);
-    return $1;
+    my $ret = FRM_Catch($@);
+    readingsSingleUpdate($hash, 'state', "error assigning IODev: $ret", 1);
+    return $ret;
   }
-  
+
   # start reading
   if ($hash->{I2C_READ_BYTES} > 0) {
     eval {
       FRM_Client_FirmataDevice($hash)->i2c_read(@$args[0], @$args[1], @$args[2]);
     };
     if ($@) {
-      $@ =~ /^(.*)( at.*FHEM.*)/;
-      readingsSingleUpdate($hash, 'state', "error initializing periodic I2C read: $1", 1);
-      return $1;
+      my $ret = FRM_Catch($@);
+      readingsSingleUpdate($hash, 'state', "error initializing periodic I2C read: $ret", 1);
+      return $ret;
     }
   }
-  
-  readingsSingleUpdate($hash, 'state', 'Initialized', 1);  
+
+  readingsSingleUpdate($hash, 'state', 'Initialized', 1);
+
   return undef;
 }
 
-sub
-FRM_I2C_Undef($$)
+sub FRM_I2C_Undef
 {
   my ($hash, $arg) = @_;
+  my $name = $hash->{NAME};
 
-  # stop reading
+  # try to stop reading
   eval {
     FRM_Client_FirmataDevice($hash)->i2c_stopreading($hash->{I2C_Address});
   };
@@ -133,20 +160,22 @@ FRM_I2C_Undef($$)
   return FRM_Client_Undef($hash, $arg);
 }
 
-sub
-FRM_I2C_Attr($$$$)
+sub FRM_I2C_Attr
 {
   my ($command, $name, $attribute, $value) = @_;
   my $hash = $main::defs{$name};
-  
+
   if (defined ($command)) {
     eval {
       if ($command eq "set") {
         ARGUMENT_HANDLER: {
-          $attribute eq "IODev" and do {          
+          $attribute eq "IODev" and do {
             if ($main::init_done) {
               # stop reading on old IODev
               if (defined($hash->{IODev}) && $hash->{IODev}->{NAME} ne $value) {
+                if (defined($main::defs{$name}{IODev_ERROR})) {
+                  die 'Perl module Device::Firmata not properly installed';
+                }
                 eval {
                   FRM_Client_FirmataDevice($hash)->i2c_stopreading($hash->{I2C_Address});
                 };
@@ -166,34 +195,29 @@ FRM_I2C_Attr($$$$)
       }
     };
     if ($@) {
-      $@ =~ /^(.*)( at.*FHEM.*)/;
-      readingsSingleUpdate($hash, 'state', "$command attribute $attribute error: " . $1, 1);
-      return "$command attribute $attribute error: " . $1;
+      my $ret = FRM_Catch($@);
+      $hash->{STATE} = "$command $attribute error: " . $ret;
+      return $hash->{STATE};
     }
   } else {
     return "no command specified";
   }
-
-  return undef;
 }
 
-sub
-FRM_I2C_Get($@)
+sub FRM_I2C_Get
 {
-  my ($hash, @parameters) = @_;
-  my $name = $hash->{NAME};
+  my ($hash, $name, $cmd, @a) = @_;
 
-  my $commandSelection = 'choose one of register:textField';
-  if (scalar(@parameters) < 2 || !defined($parameters[1])) {
-    return "unknown command, $commandSelection";
-  }
+  return "get command missing" if(!defined($cmd));
+  return "unknown get command '$cmd', choose one of " . join(" ", sort keys %gets) if(!defined($gets{$cmd}));
+  my @match = grep( $_ =~ /^$cmd($|:)/, keys %gets );
+  return "$cmd requires at least $gets{$match[0]} number as argument" unless (@a >= $gets{$match[0]});
 
-  my $command = $parameters[1];
-  if ($command eq 'register') {
+  if ($cmd eq 'register') {
     my $usage = "usage: get $name register &lt;register&gt; [&lt;bytes-to-read&gt;]";
-    if (scalar(@parameters) == 3 || scalar(@parameters) == 4) {
-      my $register = $parameters[2];
-      my $numberOfBytes = scalar(@parameters) == 4? $parameters[3] : 1;
+    if (scalar(@a) == 1 || scalar(@a) == 2) {
+      my $register = shift @a;
+      my $numberOfBytes = scalar(@a) == 2? shift @a : 1;
       if (looks_like_number($register) && $register >= 0 && looks_like_number($numberOfBytes) && $numberOfBytes > 0) {
         my $iodev = $hash->{IODev};
         my %package = (direction  => 'i2cread',
@@ -205,12 +229,13 @@ FRM_I2C_Get($@)
           CallFn($iodev->{NAME}, 'I2CWrtFn', $iodev, \%package);
         };
         if ($@) {
-          $@ =~ /^(.*)( at.*FHEM.*)/;
-          return "failed getting $command $register: " . $1;
+          my $ret = FRM_Catch($@);
+          $hash->{STATE} = "get $cmd error: " . $ret;
+          return $hash->{STATE};
         }
         my $sendStat = $package{$iodev->{NAME} . '_SENDSTAT'};
         if (defined($sendStat) && $sendStat ne 'Ok') {
-          return "failed getting $command $register: $sendStat";
+          return "get $cmd $register failed: $sendStat";
         }
       } else {
         return $usage;
@@ -218,63 +243,55 @@ FRM_I2C_Get($@)
     } else {
       return $usage;
     }
-  } else {
-    return "unknown command $command, $commandSelection";
-  }
-
-  return '';
-}
-
-sub
-FRM_I2C_Set($@)
-{
-  my ($hash, @parameters) = @_;
-  my $name = $hash->{NAME};
-
-  my $commandSelection = 'choose one of register:textField';
-  if (scalar(@parameters) < 2 || !defined($parameters[1])) {
-    return "unknown command, $commandSelection";
-  }
-
-  my $command = $parameters[1];
-  if ($command eq 'register') {
-    my $usage = "usage: set $name register <register> <byte> [<byte> ... <byte>]";
-    if (scalar(@parameters) >= 4) {
-      my $register = $parameters[2];
-      splice(@parameters, 0, 3);
-      if (looks_like_number($register) && $register >= 0 && looks_like_number($parameters[0]) && $parameters[0] >= 0) {
-        my $iodev = $hash->{IODev};
-        my %package = (direction  => 'i2cwrite',
-                       i2caddress => $hash->{I2C_Address},
-                       reg        => $register,
-                       data       => join(' ', @parameters)
-                      );
-        eval {
-          CallFn($iodev->{NAME}, 'I2CWrtFn', $iodev,  \%package);
-        };
-        if ($@) {
-          $@ =~ /^(.*)( at.*FHEM.*)/;
-          return "failed setting $command $register: " . $1;
-        }
-        my $sendStat = $package{$iodev->{NAME} . '_SENDSTAT'};
-        if (defined($sendStat) && $sendStat ne 'Ok') {
-          return "failed setting $command $register: $sendStat";
-        }
-      } else {
-        return $usage;
-      }
-    } else {
-      return $usage;
-    }
-  } else {
-    return "unknown command $command, $commandSelection";
   }
 
   return undef;
 }
 
-sub
-FRM_I2C_Receive($$)
+sub FRM_I2C_Set
+{
+  my ($hash, $name, $cmd, @a) = @_;
+
+  return "set command missing" if(!defined($cmd));
+  return "unknown set command '$cmd', choose one of " . join(" ", sort keys %sets) if(!defined($sets{$cmd}));
+  my @match = grep( $_ =~ /^$cmd($|:)/, keys %sets );
+  return "$cmd requires at least $sets{$match[0]} numbers as arguments" unless (@a >= $sets{$match[0]});
+
+  if (defined($main::defs{$name}{IODev_ERROR})) {
+    return 'Perl module Device::Firmata not properly installed';
+  }
+
+  if ($cmd eq 'register') {
+    my $usage = "usage: set $name register <register> <byte> [<byte> ... <byte>]";
+    my $register = shift @a;
+    if (looks_like_number($register) && $register >= 0 && looks_like_number($a[0]) && $a[0] >= 0) {
+      my $iodev = $hash->{IODev};
+      my %package = (direction  => 'i2cwrite',
+                     i2caddress => $hash->{I2C_Address},
+                     reg        => $register,
+                     data       => join(' ', @a)
+                    );
+      eval {
+        CallFn($iodev->{NAME}, 'I2CWrtFn', $iodev,  \%package);
+      };
+      if ($@) {
+        my $ret = FRM_Catch($@);
+        $hash->{STATE} = "set $cmd error: " . $ret;
+        return $hash->{STATE};
+      }
+      my $sendStat = $package{$iodev->{NAME} . '_SENDSTAT'};
+      if (defined($sendStat) && $sendStat ne 'Ok') {
+        return "set $cmd $register failed: $sendStat";
+      }
+    } else {
+      return $usage;
+    }
+  }
+
+  return undef;
+}
+
+sub FRM_I2C_Receive
 {
   my ($hash, $clientmsg) = @_;
   my $name = $hash->{NAME};
@@ -305,21 +322,29 @@ FRM_I2C_Receive($$)
 
 1;
 
-# -----------------------------------------------------------------------------
-#
-# CHANGES
-#
-# 28.12.2018 jensb
-#   o moved I2C receive processing from FRM module to FRM_I2C module
-#   o added I2C read function "get register"
-#   o added I2C write function "set register"
-#   o improve live modification of IODev
-#
-# 23.12.2018 jensb
-#   o issue I2C stop reading command if device is initialized with zero byte count or is deleted
-#   o updated module help
-#
-# -----------------------------------------------------------------------------
+=pod
+
+  CHANGES
+
+  28.12.2018 jensb
+    o moved I2C receive processing from FRM module to FRM_I2C module
+    o added I2C read function "get register"
+    o added I2C write function "set register"
+    o improve live modification of IODev
+
+  23.12.2018 jensb
+    o issue I2C stop reading command if device is initialized with zero byte count or is deleted
+    o updated module help
+
+  24.08.2020 jensb
+    o check for IODev install error in Init, Set, Attr and Undef
+    o prototypes removed
+    o moved define argument verification and decoding from Init to Define
+
+=cut
+
+
+=pod
 
 =head1 FHEM COMMANDREF METADATA
 
@@ -392,5 +417,15 @@ FRM_I2C_Receive($$)
 </ul><br>
 
 =end html
+
+=begin html_DE
+
+<a name="FRM_I2C"></a>
+<h3>FRM_I2C</h3>
+<ul>
+  Die Modulbeschreibung von FRM_I2C gibt es nur auf <a href="commandref.html#FRM_I2C">Englisch</a>. <br>
+</ul> <br>
+
+=end html_DE
 
 =cut
