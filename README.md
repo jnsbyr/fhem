@@ -72,6 +72,10 @@ A discussion about the modules can be found in the [FHEM Forum](https://forum.fh
 - [20_FRM_IN.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_IN.pm)
 - [20_FRM_OUT.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_OUT.pm)
 - [20_FRM_PWM.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_PWM.pm)
+- [20_FRM_RGB.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_RGB.pm)
+- [20_FRM_ROTENC.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_ROTENC.pm)
+- [20_FRM_SERVO.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_SERVO.pm)
+- [20_FRM_STEPPER.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/20_FRM_STEPPER.pm)
 
 
 ## Weather module for DWD
