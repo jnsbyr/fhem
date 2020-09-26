@@ -1,6 +1,41 @@
-##############################################
-# $Id: 20_FRM_STEPPER.pm 5927 2014-05-21 21:56:37Z ntruchsess $
-##############################################
+########################################################################################
+# $Id: 20_FRM_STEPPER.pm ? 2020-09-21 17:40:00Z jensb $
+########################################################################################
+
+=encoding UTF-8
+
+=head1 NAME
+
+FHEM module for two/four Firmata stepper motor output pins
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2013 ntruchess
+Copyright (C) 2020 jensb
+
+All rights reserved
+
+This script is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+The GNU General Public License can be found at
+
+http://www.gnu.org/copyleft/gpl.html.
+
+A copy is found in the textfile GPL.txt and important notices to the license
+from the author is found in LICENSE.txt distributed with these scripts.
+
+This script is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+This copyright notice MUST APPEAR in all copies of the script!
+
+=cut
+
 package main;
 
 use strict;
@@ -8,136 +43,151 @@ use warnings;
 
 #add FHEM/lib to @INC if it's not allready included. Should rather be in fhem.pl than here though...
 BEGIN {
-	if (!grep(/FHEM\/lib$/,@INC)) {
-		foreach my $inc (grep(/FHEM$/,@INC)) {
-			push @INC,$inc."/lib";
-		};
-	};
+  if (!grep(/FHEM\/lib$/,@INC)) {
+    foreach my $inc (grep(/FHEM$/,@INC)) {
+      push @INC,$inc."/lib";
+    };
+  };
 };
-
-use Device::Firmata::Constants  qw/ :all /;
 
 #####################################
 
+# (min) number of arguments
 my %sets = (
-  "reset"    => "noArg",
-  "position" => "",
-  "step"     => "",
+  "reset:noArg" => 0,
+  "position"    => 1,
+  "step"        => 1,
 );
 
 my %gets = (
-  "position" => "noArg",
+  "position" => "",
 );
 
-sub
-FRM_STEPPER_Initialize($)
+sub FRM_STEPPER_Initialize
 {
   my ($hash) = @_;
 
   $hash->{SetFn}     = "FRM_STEPPER_Set";
   $hash->{GetFn}     = "FRM_STEPPER_Get";
-  $hash->{DefFn}     = "FRM_Client_Define";
+  $hash->{DefFn}     = "FRM_STEPPER_Define";
   $hash->{InitFn}    = "FRM_STEPPER_Init";
   $hash->{UndefFn}   = "FRM_Client_Undef";
   $hash->{AttrFn}    = "FRM_STEPPER_Attr";
   $hash->{StateFn}   = "FRM_STEPPER_State";
-  
+
   $hash->{AttrList}  = "restoreOnReconnect:on,off restoreOnStartup:on,off speed acceleration deceleration IODev $main::readingFnAttributes";
   main::LoadModule("FRM");
 }
 
-sub
-FRM_STEPPER_Init($$)
+sub FRM_STEPPER_Define
 {
-	my ($hash,$args) = @_;
+  my ($hash, $def) = @_;
 
-	my $u = "wrong syntax: define <name> FRM_STEPPER [DRIVER|TWO_WIRE|FOUR_WIRE] directionPin stepPin [motorPin3 motorPin4] stepsPerRev [id]";
-	return $u unless defined $args;
-	
-	my $driver = shift @$args;
-	
-	return $u unless ( $driver eq 'DRIVER' or $driver eq 'TWO_WIRE' or $driver eq 'FOUR_WIRE' );
-	return $u if (($driver eq 'DRIVER' or $driver eq 'TWO_WIRE') and (scalar(@$args) < 3 or scalar(@$args) > 4));
-	return $u if (($driver eq 'FOUR_WIRE') and (scalar(@$args) < 5 or scalar(@$args) > 6));
-	
-	$hash->{DRIVER} = $driver;
-	
-	$hash->{PIN1} = shift @$args;
-	$hash->{PIN2} = shift @$args;
-	
-	if ($driver eq 'FOUR_WIRE') {
-		$hash->{PIN3} = shift @$args;
-		$hash->{PIN4} = shift @$args;
-	}
-	
-	$hash->{STEPSPERREV} = shift @$args;
-	$hash->{STEPPERNUM} = shift @$args;
-	
-	eval {
-		FRM_Client_AssignIOPort($hash);
-		my $firmata = FRM_Client_FirmataDevice($hash);
-		$firmata->stepper_config(
-			$hash->{STEPPERNUM},
-			$driver,
-			$hash->{STEPSPERREV},
-			$hash->{PIN1},
-			$hash->{PIN2},
-			$hash->{PIN3},
-			$hash->{PIN4});
-		$firmata->observe_stepper(0, \&FRM_STEPPER_observer, $hash );
-	};
-	if ($@) {
-		$@ =~ /^(.*)( at.*FHEM.*)$/;
-		$hash->{STATE} = "error initializing: ".$1;
-		return "error initializing '".$hash->{NAME}."': ".$1;
-	}
-	$hash->{POSITION} = 0;
-	$hash->{DIRECTION} = 0;
-	$hash->{STEPS} = 0;
-	if (! (defined AttrVal($hash->{NAME},"stateFormat",undef))) {
-		$main::attr{$hash->{NAME}}{"stateFormat"} = "position";
-	}
-	main::readingsSingleUpdate($hash,"state","Initialized",1);
-	return undef;
-}
+  # verify define arguments
+  my $usage = "usage: define <name> FRM_STEPPER [DRIVER|TWO_WIRE|FOUR_WIRE] directionPin stepPin [motorPin3 motorPin4] stepsPerRev [id]";
 
-sub
-FRM_STEPPER_observer
-{
-	my ( $stepper, $hash ) = @_;
-	my $name = $hash->{NAME};
-	Log3 $name,5,"onStepperMessage for pins ".$hash->{PIN1}.",".$hash->{PIN2}.(defined ($hash->{PIN3}) ? ",".$hash->{PIN3} : ",-").(defined ($hash->{PIN4}) ? ",".$hash->{PIN4} : ",-")." stepper: ".$stepper;
-	my $position = $hash->{DIRECTION} ? $hash->{POSITION} - $hash->{STEPS} : $hash->{POSITION} + $hash->{STEPS};
-	$hash->{POSITION} = $position;
-	$hash->{DIRECTION} = 0;
-	$hash->{STEPS} = 0;
-	main::readingsSingleUpdate($hash,"position",$position,1);
-}
+  my @a = split("[ \t][ \t]*", $def);
+  my $args = [@a[2..scalar(@a)-1]];
+  return $usage unless defined $args;
 
-sub
-FRM_STEPPER_Set
-{
-  my ($hash, @a) = @_;
-  return "Need at least one parameters" if(@a < 2);
-  shift @a;
-  my $name = $hash->{NAME};
-  my $command = shift @a;
-  if(!defined($sets{$command})) {
-  	my @commands = ();
-    foreach my $key (sort keys %sets) {
-      push @commands, $sets{$key} ? $key.":".join(",",$sets{$key}) : $key;
-    }
-    return "Unknown argument $command, choose one of " . join(" ", @commands);
+  my $driver = shift @$args;
+  return $usage unless ( $driver eq 'DRIVER' or $driver eq 'TWO_WIRE' or $driver eq 'FOUR_WIRE' );
+  return $usage if (($driver eq 'DRIVER' or $driver eq 'TWO_WIRE') and (scalar(@$args) < 3 or scalar(@$args) > 4));
+  return $usage if (($driver eq 'FOUR_WIRE') and (scalar(@$args) < 5 or scalar(@$args) > 6));
+
+  $hash->{DRIVER} = $driver;
+
+  $hash->{PIN1} = shift @$args;
+  $hash->{PIN2} = shift @$args;
+
+  if ($driver eq 'FOUR_WIRE') {
+    $hash->{PIN3} = shift @$args;
+    $hash->{PIN4} = shift @$args;
   }
-  COMMAND_HANDLER: {
-    $command eq "reset" and do {
+
+  $hash->{STEPSPERREV} = shift @$args;
+  $hash->{STEPPERNUM} = shift @$args;
+
+  my $ret = FRM_Client_Define($hash, $def);
+  if ($ret) {
+    return $ret;
+  }
+  return undef;
+}
+
+sub FRM_STEPPER_Init
+{
+  my ($hash,$args) = @_;
+  my $name = $hash->{NAME};
+
+  if (defined($main::defs{$name}{IODev_ERROR})) {
+    return 'Perl module Device::Firmata not properly installed';
+  }
+
+  eval {
+    FRM_Client_AssignIOPort($hash);
+    my $firmata = FRM_Client_FirmataDevice($hash);
+    $firmata->stepper_config(
+      $hash->{STEPPERNUM},
+      $hash->{DRIVER},
+      $hash->{STEPSPERREV},
+      $hash->{PIN1},
+      $hash->{PIN2},
+      $hash->{PIN3},
+      $hash->{PIN4});
+    $firmata->observe_stepper(0, \&FRM_STEPPER_observer, $hash );
+  };
+  if ($@) {
+    my $ret = FRM_Catch($@);
+    readingsSingleUpdate($hash, 'state', "error initializing: $ret", 1);
+    return $ret;
+  }
+
+  $hash->{POSITION} = 0;
+  $hash->{DIRECTION} = 0;
+  $hash->{STEPS} = 0;
+  if (! (defined AttrVal($name,"stateFormat",undef))) {
+    $main::attr{$name}{"stateFormat"} = "position";
+  }
+
+  main::readingsSingleUpdate($hash,"state","Initialized",1);
+
+  return undef;
+}
+
+sub FRM_STEPPER_observer
+{
+  my ( $stepper, $hash ) = @_;
+  my $name = $hash->{NAME};
+  Log3 $name, 5, "$name: observer pins: ".$hash->{PIN1}.",".$hash->{PIN2}.(defined ($hash->{PIN3}) ? ",".$hash->{PIN3} : ",-").(defined ($hash->{PIN4}) ? ",".$hash->{PIN4} : ",-")." stepper: ".$stepper;
+  my $position = $hash->{DIRECTION} ? $hash->{POSITION} - $hash->{STEPS} : $hash->{POSITION} + $hash->{STEPS};
+  $hash->{POSITION} = $position;
+  $hash->{DIRECTION} = 0;
+  $hash->{STEPS} = 0;
+  main::readingsSingleUpdate($hash,"position",$position,1);
+}
+
+sub FRM_STEPPER_Set
+{
+  my ($hash, $name, $cmd, @a) = @_;
+
+  return "set command missing" if(!defined($cmd));
+  my @match = grep( $_ =~ /^$cmd($|:)/, keys %sets );
+  return "unknown set command '$cmd', choose one of " . join(" ", sort keys %sets) if ($cmd eq '?' || @match == 0);
+  return "$cmd requires (at least) $sets{$match[0]} argument(s)" unless (@a >= $sets{$match[0]});
+
+  my $value = shift @a;
+  SETHANDLER: {
+    $cmd eq "reset" and do {
       $hash->{POSITION} = 0;
       main::readingsSingleUpdate($hash,"position",0,1);
       last;
     };
-    $command eq "position" and do {
+    $cmd eq "position" and do {
+      if (defined($main::defs{$name}{IODev_ERROR})) {
+        return 'Perl module Device::Firmata not properly installed';
+      }
       my $position = $hash->{POSITION};
-      my $value = shift @a;
       my $direction = $value < $position ? 1 : 0;
       my $steps = $direction ? $position - $value : $value - $position;
       my $speed = shift @a;
@@ -149,13 +199,19 @@ FRM_STEPPER_Set
       $hash->{DIRECTION} = $direction;
       $hash->{STEPS} = $steps;
       eval {
-      # $stepperNum, $direction, $numSteps, $stepSpeed, $accel, $decel
         FRM_Client_FirmataDevice($hash)->stepper_step($hash->{STEPPERNUM},$direction,$steps,$speed,$accel,$decel);
       };
+      if ($@) {
+        my $ret = FRM_Catch($@);
+        $hash->{STATE} = "set $cmd error: " . $ret;
+        return $hash->{STATE};
+      }
       last;
     };
-    $command eq "step" and do {
-      my $value = shift @a;
+    $cmd eq "step" and do {
+      if (defined($main::defs{$name}{IODev_ERROR})) {
+        return 'Perl module Device::Firmata not properly installed';
+      }
       my $direction = $value < 0 ? 1 : 0;
       my $steps = abs $value;
       my $speed = shift @a;
@@ -167,42 +223,53 @@ FRM_STEPPER_Set
       $hash->{DIRECTION} = $direction;
       $hash->{STEPS} = $steps;
       eval {
-      # $stepperNum, $direction, $numSteps, $stepSpeed, $accel, $decel
         FRM_Client_FirmataDevice($hash)->stepper_step($hash->{STEPPERNUM},$direction,$steps,$speed,$accel,$decel);
       };
+      if ($@) {
+        my $ret = FRM_Catch($@);
+        $hash->{STATE} = "set $cmd error: " . $ret;
+        return $hash->{STATE};
+      }
       last;
     };
   }
+
+  return undef;
 }
 
-sub
-FRM_STEPPER_Get
+sub FRM_STEPPER_Get
 {
-  my ($hash, @a) = @_;
-  return "Need at least one parameters" if(@a < 2);
-  shift @a;
-  my $name = $hash->{NAME};
-  my $command = shift @a;
-  return "Unknown argument $command, choose one of " . join(" ", sort keys %gets) unless defined($gets{$command});
+  my ($hash, $name, $cmd, @a) = @_;
+
+  return "get command missing" if(!defined($cmd));
+  return "unknown get command '$cmd', choose one of " . join(":noArg ", sort keys %gets) . ":noArg" if(!defined($gets{$cmd}));
+
+  GETHANDLER: {
+    $cmd eq 'position' and do {
+      return $hash->{POSITION};
+    };
+  }
+
+  return undef;
 }
 
 
-sub FRM_STEPPER_State($$$$)
+sub FRM_STEPPER_State
 {
-	my ($hash, $tim, $sname, $sval) = @_;
-	
-STATEHANDLER: {
-		$sname eq "value" and do {
-			if (AttrVal($hash->{NAME},"restoreOnStartup","on") eq "on") { 
-				FRM_STEPPER_Set($hash,$hash->{NAME},$sval);
-			}
-			last;
-		}
-	}
+  my ($hash, $tim, $sname, $sval) = @_;
+
+  STATEHANDLER: {
+    $sname eq "value" and do {
+      if (AttrVal($hash->{NAME},"restoreOnStartup","on") eq "on") {
+        FRM_STEPPER_Set($hash,$hash->{NAME},$sval);
+      }
+      last;
+    }
+  }
 }
 
-sub
-FRM_STEPPER_Attr($$$$) {
+sub FRM_STEPPER_Attr
+{
   my ($command,$name,$attribute,$value) = @_;
   my $hash = $main::defs{$name};
   eval {
@@ -219,23 +286,52 @@ FRM_STEPPER_Attr($$$$) {
     }
   };
   if ($@) {
-    $@ =~ /^(.*)( at.*FHEM.*)$/;
-    $hash->{STATE} = "error setting $attribute to $value: ".$1;
-    return "cannot $command attribute $attribute to $value for $name: ".$1;
+    my $ret = FRM_Catch($@);
+    $hash->{STATE} = "$command $attribute error: " . $ret;
+    return $hash->{STATE};
   }
 }
 
 1;
 
 =pod
+
+  CHANGES
+
+  05.09.2020 jensb
+    o check for IODev install error in Init and Set
+    o prototypes removed
+    o get position implemented
+    o set argument verifier improved
+    o module help updated
+    o moved define argument verification and decoding from Init to Define
+
+=cut
+
+=pod
+
+=head1 FHEM COMMANDREF METADATA
+
+=over
+
+=item device
+
+=item summary Firmata: rotary encoder input
+
+=item summary_DE Firmata: Drehgeber Eingang
+
+=back
+
+=head1 INSTALLATION AND CONFIGURATION
+
 =begin html
 
 <a name="FRM_STEPPER"></a>
 <h3>FRM_STEPPER</h3>
 <ul>
   represents a stepper-motor attached to digital-i/o pins of an <a href="http://www.arduino.cc">Arduino</a> running <a href="http://www.firmata.org">Firmata</a><br>
-  Requires a defined <a href="#FRM">FRM</a>-device to work.<br><br> 
-  
+  Requires a defined <a href="#FRM">FRM</a>-device to work.<br><br>
+
   <a name="FRM_STEPPERdefine"></a>
   <b>Define</b>
   <ul>
@@ -287,7 +383,7 @@ Step C0 C1<br>
   motor pin5 <-> ground</code><br>
   </li>
   </ul>
-  
+
   <br>
   <a name="FRM_STEPPERset"></a>
   <b>Set</b><br>
@@ -309,7 +405,8 @@ Step C0 C1<br>
   <a name="FRM_STEPPERget"></a>
   <b>Get</b><br>
   <ul>
-  N/A
+  <code>get &lt;position&gt;</code>
+  <li>returns the current position value</li>
   </ul><br>
   <a name="FRM_STEPPERattr"></a>
   <b>Attributes</b><br>
@@ -330,4 +427,15 @@ Step C0 C1<br>
 <br>
 
 =end html
+
+=begin html_DE
+
+<a name="FRM_STEPPER"></a>
+<h3>FRM_STEPPER</h3>
+<ul>
+  Die Modulbeschreibung von FRM_STEPPER gibt es nur auf <a href="commandref.html#FRM_STEPPER">Englisch</a>. <br>
+</ul> <br>
+
+=end html_DE
+
 =cut
