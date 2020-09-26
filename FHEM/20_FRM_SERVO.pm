@@ -1,6 +1,41 @@
-##############################################
-# $Id: 20_FRM_SERVO.pm 5927 2014-05-21 21:56:37Z ntruchsess $
-##############################################
+########################################################################################
+# $Id: 20_FRM_SERVO.pm ? 2020-09-21 17:40:00Z jensb $
+########################################################################################
+
+=encoding UTF-8
+
+=head1 NAME
+
+FHEM module for one Firmata PMW controlled servo output
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (C) 2013 ntruchess
+Copyright (C) 2020 jensb
+
+All rights reserved
+
+This script is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+The GNU General Public License can be found at
+
+http://www.gnu.org/copyleft/gpl.html.
+
+A copy is found in the textfile GPL.txt and important notices to the license
+from the author is found in LICENSE.txt distributed with these scripts.
+
+This script is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+This copyright notice MUST APPEAR in all copies of the script!
+
+=cut
+
 package main;
 
 use strict;
@@ -8,23 +43,21 @@ use warnings;
 
 #add FHEM/lib to @INC if it's not allready included. Should rather be in fhem.pl than here though...
 BEGIN {
-	if (!grep(/FHEM\/lib$/,@INC)) {
-		foreach my $inc (grep(/FHEM$/,@INC)) {
-			push @INC,$inc."/lib";
-		};
-	};
+  if (!grep(/FHEM\/lib$/,@INC)) {
+    foreach my $inc (grep(/FHEM$/,@INC)) {
+      push @INC,$inc."/lib";
+    };
+  };
 };
-
-use Device::Firmata::Constants  qw/ :all /;
 
 #####################################
 
+# number of arguments
 my %sets = (
-  "angle" => "",
+  "angle" => 1,
 );
 
-sub
-FRM_SERVO_Initialize($)
+sub FRM_SERVO_Initialize
 {
   my ($hash) = @_;
 
@@ -33,29 +66,44 @@ FRM_SERVO_Initialize($)
   $hash->{InitFn}    = "FRM_SERVO_Init";
   $hash->{UndefFn}   = "FRM_Client_Undef";
   $hash->{AttrFn}    = "FRM_SERVO_Attr";
-  
+
   $hash->{AttrList}  = "min-pulse max-pulse IODev $main::readingFnAttributes";
   main::LoadModule("FRM");
 }
 
-sub
-FRM_SERVO_Init($$)
+sub FRM_SERVO_Init
 {
   my ($hash,$args) = @_;
-  my $ret = FRM_Init_Pin_Client($hash,$args,PIN_SERVO);
-  return $ret if (defined $ret);
+  my $name = $hash->{NAME};
+
+  if (defined($main::defs{$name}{IODev_ERROR})) {
+    return 'Perl module Device::Firmata not properly installed';
+  }
+
+  my $ret = FRM_Init_Pin_Client($hash,$args,Device::Firmata::Constants->PIN_SERVO);
+  if (defined($ret)) {
+    readingsSingleUpdate($hash, 'state', "error initializing: $ret", 1);
+    return $ret;
+  }
+
   eval {
     my $firmata = FRM_Client_FirmataDevice($hash);
     $hash->{resolution}=$firmata->{metadata}{servo_resolutions}{$hash->{PIN}} if (defined $firmata->{metadata}{servo_resolutions});
     FRM_SERVO_apply_attribute($hash,"max-pulse"); #sets min-pulse as well
   };
-  return FRM_Catch($@) if $@;
+  if ($@) {
+    $ret = FRM_Catch($@);
+    readingsSingleUpdate($hash, 'state', "error initializing: $ret", 1);
+    return $ret;
+  }
+
   main::readingsSingleUpdate($hash,"state","Initialized",1);
+
   return undef;
 }
 
-sub
-FRM_SERVO_Attr($$$$) {
+sub FRM_SERVO_Attr
+{
   my ($command,$name,$attribute,$value) = @_;
   my $hash = $main::defs{$name};
   eval {
@@ -70,7 +118,10 @@ FRM_SERVO_Attr($$$$) {
         };
         ($attribute eq "min-pulse" || $attribute eq "max-pulse") and do {
           if ($main::init_done) {
-          	$main::attr{$name}{$attribute}=$value;
+            if (defined($main::defs{$name}{IODev_ERROR})) {
+              die 'Perl module Device::Firmata not properly installed';
+            }
+            $main::attr{$name}{$attribute}=$value;
             FRM_SERVO_apply_attribute($hash,$attribute);
           }
           last;
@@ -78,15 +129,15 @@ FRM_SERVO_Attr($$$$) {
       }
     }
   };
-  my $ret = FRM_Catch($@) if $@;
-  if ($ret) {
-    $hash->{STATE} = "error setting $attribute to $value: ".$ret;
-    return "cannot $command attribute $attribute to $value for $name: ".$ret;
+  if ($@) {
+    my $ret = FRM_Catch($@);
+    $hash->{STATE} = "$command $attribute error: " . $ret;
+    return $hash->{STATE};
   }
-  return undef;
 }
 
-sub FRM_SERVO_apply_attribute {
+sub FRM_SERVO_apply_attribute
+{
   my ($hash,$attribute) = @_;
   if ( $attribute eq "min-pulse" || $attribute eq "max-pulse" ) {
     my $name = $hash->{NAME};
@@ -95,25 +146,62 @@ sub FRM_SERVO_apply_attribute {
   }
 }
 
-sub
-FRM_SERVO_Set($@)
+sub FRM_SERVO_Set
 {
-  my ($hash, @a) = @_;
-  return "Need at least one parameters" if(@a < 2);
-  return "Unknown argument $a[1], choose one of " . join(" ", sort keys %sets)
-  	if(!defined($sets{$a[1]}));
-  my $command = $a[1];
-  my $value = $a[2];
+  my ($hash, $name, $cmd, @a) = @_;
+
+  return "set command missing" if(!defined($cmd));
+  my @match = grep( $_ =~ /^$cmd($|:)/, keys %sets );
+  return "unknown set command '$cmd', choose one of " . join(" ", sort keys %sets) if ($cmd eq '?' || @match == 0);
+  return "$cmd requires $sets{$match[0]} argument" unless (@a == $sets{$match[0]});
+
+  if (defined($main::defs{$name}{IODev_ERROR})) {
+    return 'Perl module Device::Firmata not properly installed';
+  }
+
+  my $value = shift @a;
   eval {
     FRM_Client_FirmataDevice($hash)->servo_write($hash->{PIN},$value);
     main::readingsSingleUpdate($hash,"state",$value, 1);
   };
-  return $@;
+  if ($@) {
+    my $ret = FRM_Catch($@);
+    $hash->{STATE} = "set $cmd error: " . $ret;
+    return $hash->{STATE};
+  }
+
+  return undef;
 }
 
 1;
 
 =pod
+
+  CHANGES
+
+  05.09.2020 jensb
+    o check for IODev install error in Init and Set
+    o prototypes removed
+    o set argument verifier improved
+
+=cut
+
+=pod
+
+=head1 FHEM COMMANDREF METADATA
+
+=over
+
+=item device
+
+=item summary Firmata: PWM controlled servo output
+
+=item summary_DE Firmata: PWM gesteuerter Servo Ausgang
+
+=back
+
+=head1 INSTALLATION AND CONFIGURATION
+
 =begin html
 
 <a name="FRM_SERVO"></a>
@@ -121,16 +209,16 @@ FRM_SERVO_Set($@)
 <ul>
   represents a pin of an <a href="http://www.arduino.cc">Arduino</a> running <a href="http://www.firmata.org">Firmata</a>
   configured to drive a pwm-controlled servo-motor.<br>
-  The value set will be drive the shaft of the servo to the specified angle. see <a href="http://arduino.cc/en/Reference/ServoWrite">Servo.write</a> for values and range<br> 
-  Requires a defined <a href="#FRM">FRM</a>-device to work.<br><br> 
-  
+  The value set will be drive the shaft of the servo to the specified angle. see <a href="http://arduino.cc/en/Reference/ServoWrite">Servo.write</a> for values and range<br>
+  Requires a defined <a href="#FRM">FRM</a>-device to work.<br><br>
+
   <a name="FRM_SERVOdefine"></a>
   <b>Define</b>
   <ul>
   <code>define &lt;name&gt; FRM_SERVO &lt;pin&gt;</code> <br>
   Defines the FRM_SERVO device. &lt;pin&gt> is the arduino-pin to use.
   </ul>
-  
+
   <br>
   <a name="FRM_SERVOset"></a>
   <b>Set</b><br>
@@ -160,4 +248,15 @@ FRM_SERVO_Set($@)
 <br>
 
 =end html
+
+=begin html_DE
+
+<a name="FRM_SERVO"></a>
+<h3>FRM_SERVO</h3>
+<ul>
+  Die Modulbeschreibung von FRM_SERVO gibt es nur auf <a href="commandref.html#FRM_SERVO">Englisch</a>. <br>
+</ul> <br>
+
+=end html_DE
+
 =cut
