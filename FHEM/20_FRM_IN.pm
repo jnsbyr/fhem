@@ -357,7 +357,7 @@ sub FRM_IN_Attr
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   15.02.2019 jensb
     o bugfix: change detection no longer assumes that reading "reading" is defined

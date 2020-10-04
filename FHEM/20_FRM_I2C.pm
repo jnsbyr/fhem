@@ -324,7 +324,7 @@ sub FRM_I2C_Receive
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   28.12.2018 jensb
     o moved I2C receive processing from FRM module to FRM_I2C module

@@ -335,7 +335,7 @@ sub FRM_PWM_Attr
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   2016 jensb
     o modified subs FRM_PWM_Init and FRM_PWM_State to support attribute "restoreOnStartup"
@@ -348,6 +348,7 @@ sub FRM_PWM_Attr
     o module help updated
 
 =cut
+
 
 =pod
 

@@ -177,7 +177,7 @@ sub FRM_SERVO_Set
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   05.09.2020 jensb
     o check for IODev install error in Init and Set
@@ -185,6 +185,7 @@ sub FRM_SERVO_Set
     o set argument verifier improved
 
 =cut
+
 
 =pod
 

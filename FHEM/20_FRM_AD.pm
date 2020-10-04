@@ -200,7 +200,7 @@ sub FRM_AD_Attr
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   2016 jensb
     o modified sub FRM_AD_Init to catch exceptions and return error message

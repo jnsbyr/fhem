@@ -255,7 +255,7 @@ sub FRM_ROTENC_State
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   05.09.2020 jensb
     o check for IODev install error in Init, Set and Undef
@@ -264,6 +264,7 @@ sub FRM_ROTENC_State
     o moved define argument verification and decoding from Init to Define
 
 =cut
+
 
 =pod
 
@@ -300,10 +301,12 @@ sub FRM_ROTENC_State
   <br>
   <a name="FRM_ROTENCset"></a>
   <b>Set</b><br>
+  <ul>
     <li>reset<br>
     resets to value of 'position' to 0<br></li>
     <li>offset &lt;value&gt;<br>
     set offset value of 'position'<br></li>
+  </ul><br>
   <a name="FRM_ROTENCget"></a>
   <b>Get</b>
   <ul>

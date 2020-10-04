@@ -230,7 +230,7 @@ sub FRM_OUT_Attr
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   2016 jensb
     o new sub FRM_OUT_observer, modified sub FRM_OUT_Init

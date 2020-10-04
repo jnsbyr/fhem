@@ -296,7 +296,7 @@ sub FRM_STEPPER_Attr
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   05.09.2020 jensb
     o check for IODev install error in Init and Set
@@ -307,6 +307,7 @@ sub FRM_STEPPER_Attr
     o moved define argument verification and decoding from Init to Define
 
 =cut
+
 
 =pod
 

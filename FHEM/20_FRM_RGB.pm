@@ -325,7 +325,7 @@ sub FRM_RGB_Attr
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   30.08.2020 jensb
     o check for IODev install error in Init and Set
@@ -334,6 +334,7 @@ sub FRM_RGB_Attr
     o get/set argument verifier improved
 
 =cut
+
 
 =pod
 
