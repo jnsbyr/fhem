@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201601 2019-07-14 19:59:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201602 2002-10-09 11:06:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -15,22 +15,23 @@ Copyright (C) 2015 Jens B.
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -63,7 +64,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.016.001;
+our $VERSION   = 2.016.002;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -317,7 +318,7 @@ FHEM I<DefFn>
 
 =cut
 
-sub Define($$)
+sub Define
 {
   my ($hash, $def) = @_;
   my $name = $hash->{NAME};
@@ -343,7 +344,7 @@ FHEM I<GetFn>
 
 =cut
 
-sub Get($@)
+sub Get
 {
   my ($hash, @a) = @_;
   my $name = $hash->{NAME};
@@ -379,7 +380,7 @@ get CSS style for horizontal forecast
 
 =cut
 
-sub GetForecastCssH()
+sub GetForecastCssH
 {
   my $style = '
   <style type="text/css">
@@ -557,7 +558,8 @@ sub GetForecastCssH()
 
 =cut
 
-sub IsActive($$$) {
+sub IsActive
+{
   my ($start, $end, $time) = @_;
 
   if ($start && $end) {
@@ -585,7 +587,8 @@ sub IsActive($$$) {
 
 =cut
 
-sub IsInRange($$$$) {
+sub IsInRange
+{
   my ($start, $end, $iStart, $iEnd) = @_;
 
   if ($start && $end) {
@@ -615,7 +618,8 @@ get FHEM weather icon for weather code
 
 =cut
 
-sub GetWeatherIconTag($$;$) {
+sub GetWeatherIconTag
+{
   my ($weatherCode, $cloudCover, $day) = @_;
 
   if (!defined($day)) {
@@ -670,7 +674,8 @@ hour index, day prefix and hour prefix for forecast readings access
 
 =cut
 
-sub ToForecastIndex($$$) {
+sub ToForecastIndex
+{
   my ($iconIndex, $offsets, $timeResolution) = @_;
 
   my $day = int(($iconIndex + 1)/2);
@@ -714,7 +719,8 @@ prepare data
 
 =cut
 
-sub PrepareForecastData($$$$) {
+sub PrepareForecastData
+{
   my ($d, $days, $useGroundTemperature, $theme) = @_;
 
   # find two samples of 1st day where at least the 2nd is still in the future
@@ -1109,7 +1115,8 @@ create forecast display as a horizontal CSS table with two icons per day (withou
 
 =cut
 
-sub GetForecastHtmlH($$$$) {
+sub GetForecastHtmlH
+{
   my ($name, $days, $useGroundTemperature, $theme) = @_;
 
   $name = "<none>" if(!$name);
@@ -1214,7 +1221,8 @@ including CSS style and optional auto refresh
 
 =cut
 
-sub AsHtmlH($) {
+sub AsHtmlH
+{
   my ($name) = @_;
 
   $name = "<none>" if(!$name);
@@ -1228,7 +1236,7 @@ sub AsHtmlH($) {
     $ret .= '<script> ';
     $ret .= 'function getDWDOpenDataWeblink() { ';
     $ret .=   'var fwcsrf = document.getElementsByTagName("body")[0].getAttribute("fwcsrf"); ';
-    $ret .=   '$.get("/fhem?cmd=get%20' . $name . '%20horizontalForecast&XHR=1&fwcsrf=" + fwcsrf, function(forecastElements) { ';
+    $ret .=   '$.get(FW_root + "?cmd=get%20' . $name . '%20horizontalForecast&XHR=1&fwcsrf=" + fwcsrf, function(forecastElements) { ';
     $ret .=     '$("#DWD_OpenData_Weblink").html(forecastElements);';
     $ret .=   '});';
     $ret .= '} ';
@@ -1279,7 +1287,8 @@ if this file is renamed to F<99_DWD_OpenData_Weblink.pm>.
 
 =cut
 
-sub DWD_OpenData_Weblink_Initialize($) {
+sub DWD_OpenData_Weblink_Initialize
+{
   my ($hash) = @_;
 
   $hash->{DefFn} = 'DWD_OpenData_Weblink::Define';
@@ -1290,76 +1299,80 @@ sub DWD_OpenData_Weblink_Initialize($) {
 
 1;
 
-# -----------------------------------------------------------------------------
-#
-# CHANGES
-#
-# 2019-07-14  bugfix: added missing final closing </div> tag to GetForecastHtmlH
-#
-# 2019-02-23  feature: location specific day/night detection based on new reading SunUp
-#
-# 2019-02-02  feature: do not display text for cloud related weather codes 0 ... 3
-#             feature: support forcecastResolution=1
-#
-# 2018-12-30  bugfix: max. wind speed of remaining hours of today in PrepareForecastData
-#
-# 2018-12-17  bugfix: check if start/end readings are defined in PrepareForecastData
-#
-# 2018-10-05  bugfix: rain of 1st day not available for all hours
-#
-# 2018-09-22  feature: reading names modified for KML based forecast data compatibility
-#
-# 2018-07-29  feature: auto-update without reloading page
-#
-# 2018-07-22  coding:  split off data preparation from HTML generation into function PrepareForecastData
-#
-# 2018-07-21  feature: precipitation display at 1st icon refined to display precipitation up to time at 2nd icon
-#
-# 2018-07-04  feature: wind display at 1st icon refined to display max. speed of remaining day
-#
-# 2018-06-30  feature: temperature display at 2nd icon refined to display min/max/current temperature
-#                      depending on current time
-#
-# 2018-06-23  feature: support forecast with 3 hours resolution
-#
-# 2018-06-16  coding:  functions converted to package DWD_OpenData_Weblink
-#             feature: added function to make the Perl module act like a FHEM module
-#                      if module file is renamed to 99_DWD_OpenData_Weblink.pm
-#
-# 2018-04-02  feature: weather alert indication reimplemented for DWD_OpenData
-#
-# 2018-03-24  feature: use constants for colors
-#             bugfix:  seconds comparison in method IsDay for day/night detection
-#
-# 2018-03-20  feature: show precipitation of night if 2nd icon shows 2nd day
-#
-# 2018-03-19  bugfix:  always use black font for wind strength highlighting
-#             feature: use constants for temperature and precipitation thresholds
-#
-# 2018-03-17  feature: set coloured background depending on wind strength
-#             feature: set coloured foreground depending on temperature
-#             feature: set coloured foreground depending on precipitation
-#
-# 2018-03-15  feature: modified 2nd icon: replaced min./max day temperature with forecast temperature for 2nd day
-#
-# 2018-03-03  feature: enhanced 1st day: show temperature of hour of 1st icon instead of min. day temperature
-#                                        show min. day temperature together with max. day temperature at 2nd icon
-#
-# 2018-02-11  feature: precipitation added
-#
-# 2018-01-27  feature: rewritten for use with DWD_OpenData
-#
-# 2016-08-26  feature: support multiple alerts at same time and display alert description
-#
-# 2015-11-04  feature: use CSS styling
-#             feature: show alert messages in modal dialog
-#
-# 2015-11-01  bugfix:  reading c_weather not always available
-#             feature: added show alert icon for weather warnings
-#
-# 2015-10-11  initial release
-#
-# -----------------------------------------------------------------------------
+=pod
+
+=head1 CHANGES
+
+  2020-10-09  feature: support configurable FHEM web root
+              coding:  prototypes removed
+              documentation: annotaded module help of attributes for FHEMWEB
+
+  2019-07-14  bugfix: added missing final closing </div> tag to GetForecastHtmlH
+
+  2019-02-23  feature: location specific day/night detection based on new reading SunUp
+
+  2019-02-02  feature: do not display text for cloud related weather codes 0 ... 3
+              feature: support forcecastResolution=1
+
+  2018-12-30  bugfix: max. wind speed of remaining hours of today in PrepareForecastData
+
+  2018-12-17  bugfix: check if start/end readings are defined in PrepareForecastData
+
+  2018-10-05  bugfix: rain of 1st day not available for all hours
+
+  2018-09-22  feature: reading names modified for KML based forecast data compatibility
+
+  2018-07-29  feature: auto-update without reloading page
+
+  2018-07-22  coding: split off data preparation from HTML generation into function PrepareForecastData
+
+  2018-07-21  feature: precipitation display at 1st icon refined to display precipitation up to time at 2nd icon
+
+  2018-07-04  feature: wind display at 1st icon refined to display max. speed of remaining day
+
+  2018-06-30  feature: temperature display at 2nd icon refined to display min/max/current temperature
+                       depending on current time
+
+  2018-06-23  feature: support forecast with 3 hours resolution
+
+  2018-06-16  coding:  functions converted to package DWD_OpenData_Weblink
+              feature: added function to make the Perl module act like a FHEM module
+                       if module file is renamed to 99_DWD_OpenData_Weblink.pm
+
+  2018-04-02  feature: weather alert indication reimplemented for DWD_OpenData
+
+  2018-03-24  feature: use constants for colors
+              bugfix:  seconds comparison in method IsDay for day/night detection
+
+  2018-03-20  feature: show precipitation of night if 2nd icon shows 2nd day
+
+  2018-03-19  bugfix:  always use black font for wind strength highlighting
+              feature: use constants for temperature and precipitation thresholds
+
+  2018-03-17  feature: set coloured background depending on wind strength
+              feature: set coloured foreground depending on temperature
+              feature: set coloured foreground depending on precipitation
+
+  2018-03-15  feature: modified 2nd icon: replaced min./max day temperature with forecast temperature for 2nd day
+
+  2018-03-03  feature: enhanced 1st day: show temperature of hour of 1st icon instead of min. day temperature
+                                         show min. day temperature together with max. day temperature at 2nd icon
+
+  2018-02-11  feature: precipitation added
+
+  2018-01-27  feature: rewritten for use with DWD_OpenData
+
+  2016-08-26  feature: support multiple alerts at same time and display alert description
+
+  2015-11-04  feature: use CSS styling
+              feature: show alert messages in modal dialog
+
+  2015-11-01  bugfix:  reading c_weather not always available
+              feature: added show alert icon for weather warnings
+
+  2015-10-11  initial release
+
+=cut
 
 # -----------------------------------------------------------------------------
 #
@@ -1385,7 +1398,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
 
 =begin html
 
-<a name="DWD_OpenData_Weblink"></a>
+<a name="DWD_OpenData_Weblink"/>
 <h3>DWD_Opendata Weblink</h3>
 <ul>
   The DWD_OpenData_Weblink helper module prepares the forecast and alert data of the DWD_OpenData module to be presented in a web frontend.
@@ -1398,7 +1411,7 @@ sub DWD_OpenData_Weblink_Initialize($) {
 
   The weblink function <a href="#AsHtmlH($)">DWD_OpenData_Weblink::AsHtmlH</a> requires the name of a DWD_OpenData_Weblink device as parameter. All other settings must be done using the attributes of the device (see below).<br><br>
 
-  <a name="DWD_OpenData_Weblinkdefine"></a>
+  <a name="DWD_OpenData_Weblinkdefine"/>
   <b>Define</b> <br><br>
   <ul>
     Example: <br><br>
@@ -1411,39 +1424,66 @@ sub DWD_OpenData_Weblink_Initialize($) {
     <code>define MyDWDWeblink weblink htmlCode { DWD_OpenData_Weblink::AsHtmlH("MyDWDWeblinkDevice") }</code> <br><br>
 
     where "MyDWDDevice" is the name of your DWD_OpenData device <br><br>
-  </ul> <br>
+  </ul><br>
 
-  <a name="DWD_OpenData_Weblinkattr"></a>
+  <a name="DWD_OpenData_Weblinkattr"/>
   <b>Attributes</b> <br><br>
   <ul>
-      <li>IODev &lt;DWD_OpenData device name&gt;, required, default: none<br>
-          Assign an DWD_OpenData device as data source.
-      </li><br>
-      <li>forecastDays: 1...9, default: 4<br>
-          The number of days to display.
-      </li><br>
-      <li>refreshRate &lt;seconds&gt;, default: 0<br>
-          If set to a value greater than zero will update the data periodically and on tab change (requires current Browser with JavaScript).
-      </li><br>
-      <li>useGroundTemperature {0|1}, default: 0<br>
-          If enabled use min(Tg, Tm) instead Tg.
-      </li><br>
-      <li>theme {light,dark}, default: light<br>
-          Adjust texts colors to improve readability.
-      </li><br>
-  </ul> <br>
+    <a name="IODev"/>
+    <li>IODev &lt;DWD_OpenData device name&gt;, required, default: none<br>
+        Assign an <a href="#DWD_OpenData">DWD_OpenData</a> device as data source.
+    </li><br>
+
+    <a name="forecastDays"/>
+    <li>forecastDays: 1...9, default: 4<br>
+        The number of days to display.
+    </li><br>
+
+    <a name="refreshRate"/>
+    <li>refreshRate &lt;seconds&gt;, default: 0<br>
+        If set to a value greater than zero will update the data periodically and on tab change (requires
+        current Browser with JavaScript).
+    </li><br>
+
+    <a name="useGroundTemperature"/>
+    <li>useGroundTemperature {0|1}, default: 0<br>
+        If enabled use min(Tg, Tm) instead Tg.
+    </li><br>
+
+    <a name="theme"/>
+    <li>theme {light,dark}, default: light<br>
+        Adjust texts colors to improve readability.
+    </li><br>
+
+    <li><a href="#attributes">global attributes</a>
+    </li>
+  </ul><br>
 
   <b>Notes:</b> <br><br>
   <ul>
-    <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, R600, RRhc, Rh00, ww, wwd, Neff, SunUp must be enabled in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
+    <li>The properties TTT, Tx, Tn, Tg, DD, FX1, RR6c, R600, RRhc, Rh00, ww, wwd, Neff, SunUp must be enabled
+        in your DWD_OpenData device using the <i>forecastProperties</i> attribute.
     </li>
-    <li>Set the attribute <i>forecastResolution</i> of the DWD_OpenData device to 1, 3 or 6 hours. Other values are not fully supported.
+    <li>Set the attribute <i>forecastResolution</i> of the DWD_OpenData device to 1, 3 or 6 hours. Other values
+        are not fully supported.
     </li>
-    <li>This module is designed for ease of use and does not require additional web resources - but because of this
-        it does not comply to best practices in respect to inline images and inline CSS script.
+    <li>This module is designed for ease of use and does not require additional web resources - but because of
+        this it does not comply to best practices in respect to inline images and inline CSS script.
     </li>
-  </ul> <br>
-</ul>
+  </ul>
+</ul><br>
 
 =end html
+
+=begin html_DE
+
+<a name="DWD_OpenData_Weblink"/>
+<h3>DWD_OpenData_Weblink</h3>
+<ul>
+  Die Modulbeschreibung von DWD_OpenData_Weblink gibt es nur auf
+  <a href="commandref.html#DWD_OpenData_Weblink">Englisch</a>. <br>
+</ul><br>
+
+=end html_DE
+
 =cut

@@ -16,22 +16,23 @@ Copyright (C) 2018 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -324,7 +325,7 @@ sub FRM_I2C_Receive
 
 =pod
 
-  CHANGES
+=head1 CHANGES
 
   28.12.2018 jensb
     o moved I2C receive processing from FRM module to FRM_I2C module
@@ -340,6 +341,9 @@ sub FRM_I2C_Receive
     o check for IODev install error in Init, Set, Attr and Undef
     o prototypes removed
     o moved define argument verification and decoding from Init to Define
+
+  19.10.2020 jensb
+    o annotaded module help of attributes for FHEMWEB
 
 =cut
 
@@ -362,14 +366,14 @@ sub FRM_I2C_Receive
 
 =begin html
 
-<a name="FRM_I2C"></a>
+<a name="FRM_I2C"/>
 <h3>FRM_I2C</h3>
 <ul>
   This module provides read and write capabilities for an I2C device that is wired to a <a href="http://www.firmata.org">Firmata device</a>. It requires a defined <a href="#FRM">FRM</a> device to work. I2C bus support must be enabled on the FRM device by setting the attribute <code>i2c-config</code> to a valid value.<br><br>
 
   If periodic reading is enabled the requested bytes will be updated depending on the attribute <code>sampling-interval</code> of the FRM device as soon as the Firmata device is connected.<br><br>
 
-  <a name="FRM_I2Cdefine"></a>
+  <a name="FRM_I2Cdefine"/>
   <b>Define</b><br><br>
 
   <code>define &lt;name&gt; FRM_I2C &lt;i2c-address&gt; &lt;register&gt; &lt;bytes-to-read&gt;</code> <br><br>
@@ -380,7 +384,7 @@ sub FRM_I2C_Receive
     <li>bytes-to-read is the number of bytes to read periodically from the I2C device, the maximum number of bytes that can be read at the same time is limited by the Firmata firmware, the I2C device capabilities and the <code>sampling-interval</code> attribute of the FRM device, set to zero to disable periodic reading</li>
   </ul><br>
 
-  <a name="FRM_I2Cget"></a>
+  <a name="FRM_I2Cget"/>
   <b>Get</b><br>
   <ul>
     <li><code>register &lt;register&gt; [&lt;bytes-to-read&gt;]</code><br>
@@ -389,7 +393,7 @@ sub FRM_I2C_Receive
     </li>
   </ul><br>
 
-  <a name="FRM_I2Cset"></a>
+  <a name="FRM_I2Cset"/>
   <b>Set</b><br>
   <ul>
     <li><code>register &lt;register&gt; &lt;byte&gt; [&lt;byte&gt; ... &lt;byte&gt;]</code><br>
@@ -397,30 +401,33 @@ sub FRM_I2C_Receive
     </li>
   </ul><br>
 
-  <a name="FRM_I2Cattr"></a>
+  <a name="FRM_I2Cattr"/>
   <b>Attributes</b><br>
   <ul>
+    <a name="IODev"/>
     <li><a href="#IODev">IODev</a><br>
-      specify which <a href="#FRM">FRM</a> to use (optional, only required if there is more than one FRM device defined)
+      Specify which <a href="#FRM">FRM</a> to use. Only required if there is more than one FRM-device defined.
     </li>
-    <li><a href="#eventMap">eventMap</a></li>
+
+    <li><a href="#attributes">global attributes</a></li>
+
     <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul><br>
 
-  <a name="FRM_I2Creadings"></a>
+  <a name="FRM_I2Creadings"/>
   <b>Readings</b><br>
   <ul>
     <li>values<br>
       space separated list of 256 byte register image using decimal values - may be preset to any value, only the requested bytes will be updated
     </li>
-  </ul><br>
+  </ul>
 </ul><br>
 
 =end html
 
 =begin html_DE
 
-<a name="FRM_I2C"></a>
+<a name="FRM_I2C"/>
 <h3>FRM_I2C</h3>
 <ul>
   Die Modulbeschreibung von FRM_I2C gibt es nur auf <a href="commandref.html#FRM_I2C">Englisch</a>. <br>
