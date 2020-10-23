@@ -1,5 +1,5 @@
 ########################################################################################
-# $Id: 10_FRM.pm ? 2020-09-27 12:25:00Z jensb $
+# $Id: 10_FRM.pm ? 2020-10-04 18:54:00Z jensb $
 ########################################################################################
 
 =encoding UTF-8
@@ -15,22 +15,23 @@ Copyright (C) 2015 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -58,7 +59,12 @@ no if $] >= 5.017011, warnings => 'experimental';
 
 use constant FRM_MIN_DEVICE_FIRMATA_VERSION => 0.69;
 
-my $FRM_DEVICE_FIRMATA_OK = 0;
+use constant FRM_DEVICE_FIRMATA_STATUS_INSTALLED     => 1;
+use constant FRM_DEVICE_FIRMATA_STATUS_NOT_INSTALLED => 0;
+use constant FRM_DEVICE_FIRMATA_STATUS_WRONG_VERSION => -1;
+use constant FRM_DEVICE_FIRMATA_STATUS_UNDEFINED     => -9;
+
+my $deviceFirmataStatus = FRM_DEVICE_FIRMATA_STATUS_UNDEFINED;
 
 # number of arguments
 my %sets = (
@@ -175,31 +181,34 @@ sub FRM_Define {
   }
 
   # check if Device::Firmata module is properly installed
-  eval {
-    require Device::Firmata;
-    require Device::Firmata::Constants;
-    require Device::Firmata::Platform;
-    require Device::Firmata::Protocol;
-    delete $main::defs{$name}{DRIVER_STATUS};
-    $FRM_DEVICE_FIRMATA_OK = 1;
-  };
-  if ($@) {
-    $main::defs{$name}{DRIVER_STATUS} = 'Perl module Device::Firmata not found, see Commandref for details how to fix';
-    $FRM_DEVICE_FIRMATA_OK = 0;
-    main::Log3 $name, 1, "$name ERROR: " . $main::defs{$name}{DRIVER_STATUS};
-    readingsSingleUpdate($hash, 'state', 'error', 1);
-    return undef;
-  }
+  $deviceFirmataStatus = FRM_Get_Device_Firmata_Status();
+  given($deviceFirmataStatus) {
+    when(FRM_DEVICE_FIRMATA_STATUS_INSTALLED) {
+      delete $main::defs{$name}{DRIVER_STATUS};
+    }
 
-  # check Device::Firmata module version
-  $main::defs{$name}{DRIVER_VERSION} = $Device::Firmata::VERSION;
-  if ($Device::Firmata::VERSION < FRM_MIN_DEVICE_FIRMATA_VERSION) {
-    $main::defs{$name}{DRIVER_STATUS} = 'Perl module Device::Firmata version ' . FRM_MIN_DEVICE_FIRMATA_VERSION . ' or higher required, see Commandref for details how to fix';
-    $FRM_DEVICE_FIRMATA_OK = 1;
-    main::Log3 $name, 2, "$name WARNING: " . $main::defs{$name}{DRIVER_STATUS};
-    # @TODO readingsSingleUpdate($hash, 'state', 'error', 1);
-    # @TODO $FRM_DEVICE_FIRMATA_OK = 0;
-    # @TODO return undef;
+    when(FRM_DEVICE_FIRMATA_STATUS_NOT_INSTALLED) {
+      $main::defs{$name}{DRIVER_STATUS} = 'Perl module Device::Firmata not found, see Commandref for details how to fix';
+      main::Log3 $name, 1, "$name ERROR: " . $main::defs{$name}{DRIVER_STATUS};
+      readingsSingleUpdate($hash, 'state', 'error', 1);
+      return undef;
+    }
+
+    when(FRM_DEVICE_FIRMATA_STATUS_WRONG_VERSION) {
+      $main::defs{$name}{DRIVER_STATUS} = 'Perl module Device::Firmata version ' . FRM_MIN_DEVICE_FIRMATA_VERSION . ' or higher required, see Commandref for details how to fix';
+      main::Log3 $name, 2, "$name WARNING: " . $main::defs{$name}{DRIVER_STATUS};
+
+      $deviceFirmataStatus = FRM_DEVICE_FIRMATA_STATUS_INSTALLED;
+      # @TODO readingsSingleUpdate($hash, 'state', 'error', 1);
+      # @TODO $deviceFirmataStatus = FRM_DEVICE_FIRMATA_STATUS_WRONG_VERSION;
+      # @TODO return undef;
+    }
+
+    default {
+      main::Log3 $name, 1, "$name ERROR: Validation of Perl module Device::Firmata failed";
+      readingsSingleUpdate($hash, 'state', 'error', 1);
+      return undef;
+    }
   }
 
   readingsSingleUpdate($hash, 'state', 'defined', 1);
@@ -267,7 +276,7 @@ sub FRM_Start {
   my ($hash) = @_;
   my $name  = $hash->{NAME};
 
-  if ($FRM_DEVICE_FIRMATA_OK <= 0) {
+  if ($deviceFirmataStatus != FRM_DEVICE_FIRMATA_STATUS_INSTALLED) {
     return "$name Perl module Device::Firmata not properly installed";
   }
 
@@ -963,6 +972,47 @@ sub FRM_SetupDevice {
   return undef;
 }
 
+=head2 FRM_Get_Device_Firmata_Status()
+
+  Returns:
+    main::FRM_DEVICE_FIRMATA_STATUS_INSTALLED
+      if Device::Firmata is installed and has the required version
+
+    main::FRM_DEVICE_FIRMATA_STATUS_NOT_INSTALLED
+      if the Perl module Device::Firmata is missing or does not have the required version
+
+    main::FRM_DEVICE_FIRMATA_STATUS_WRONG_VERSION
+      if Device::Firmata is installed but does not have the required version
+
+  Description:
+    FRM public function
+
+=cut
+
+sub FRM_Get_Device_Firmata_Status {
+
+  # check if Device::Firmata module is properly installed
+  if ($deviceFirmataStatus == FRM_DEVICE_FIRMATA_STATUS_UNDEFINED) {
+    eval {
+      require Device::Firmata;
+      require Device::Firmata::Constants;
+      require Device::Firmata::Platform;
+      require Device::Firmata::Protocol;
+
+      if ($Device::Firmata::VERSION >= FRM_MIN_DEVICE_FIRMATA_VERSION) {
+        $deviceFirmataStatus = FRM_DEVICE_FIRMATA_STATUS_INSTALLED;
+      } else {
+        $deviceFirmataStatus = FRM_DEVICE_FIRMATA_STATUS_WRONG_VERSION;
+      }
+    };
+    if ($@) {
+      $deviceFirmataStatus = FRM_DEVICE_FIRMATA_STATUS_NOT_INSTALLED;
+    }
+  }
+
+  return $deviceFirmataStatus;
+}
+
 =head2 FRM_forall_clients($$$)
 
   Returns:
@@ -1070,7 +1120,7 @@ sub FRM_Client_Define {
   my $cname = $chash->{NAME};
 
   # check if Device::Firmata module is properly installed
-  if ($FRM_DEVICE_FIRMATA_OK > 0) {
+  if ($deviceFirmataStatus > 0) {
     readingsSingleUpdate($chash, 'state', 'defined', 1);
   } else {
     $main::defs{$cname}{IODev_ERROR} = 1;
@@ -2206,6 +2256,10 @@ sub FRM_Serial_Close {
   27.09.2020 jensb
     o new attribute "receiveTimeout"
 
+  04.10.2020 jensb
+    o wrapped Device::Firmata check into sub FRM_Get_Device_Firmata_Status() for use in other modules
+    o annotaded module help of attributes for FHEMWEB
+
 =cut
 
 
@@ -2227,11 +2281,10 @@ sub FRM_Serial_Close {
 
 =begin html
 
-<a name="FRM"></a>
+<a name="FRM"/>
 <h3>FRM</h3>
 <ul>
-  This module enables FHEM to communicate with a device that implements the <a href="http://www.firmata.org">Firmata</a>
-  protocol (e.g. an <a href="http://www.arduino.cc">Arduino</a>).<br><br>
+  This module enables FHEM to communicate with a device (e.g. an <a href="https://www.arduino.cc/">Arduino</a>) that implements the <a href="https://github.com/firmata/protocol">Firmata Protocol</a>.<br><br>
 
   The connection between FHEM and the Firmata device can be established by serial port, USB, LAN or WiFi.<br><br>
 
@@ -2269,7 +2322,7 @@ sub FRM_Serial_Close {
   Each client stands for a pin of the Firmata device configured for a specific use
   (digital/analog in/out) or an integrated circuit connected to Firmata device by I2C.<br><br>
 
-  <a name="FRMdefine"></a>
+  <a name="FRMdefine"/>
   <b>Define</b><br><br>
 
   Prerequisites:<br><br>
@@ -2345,9 +2398,9 @@ sub FRM_Serial_Close {
   can be installed using the library manager of the Arduino IDE.<br><br>
 
   Further information can be found at the FRM client devices listed above and the
-  <a href="http://www.fhemwiki.de/wiki/Arduino_Firmata#Installation_ConfigurableFirmata">FHEM-Wiki</a>.<br><br>
+  <a href="https://wiki.fhem.de/wiki/Arduino_Firmata">FHEM-Wiki</a>.<br><br>
 
-  <a name="FRMset"></a>
+  <a name="FRMset"/>
   <b>Set</b>
   <ul>
   <li>
@@ -2367,9 +2420,10 @@ sub FRM_Serial_Close {
   </ul>
   <br><br>
 
-  <a name="FRMattr"></a>
+  <a name="FRMattr"/>
   <b>Attributes</b><br>
   <ul>
+      <a name="resetDeviceOnConnect"/>
       <li>resetDeviceOnConnect {0|1}, default: 1<br>
       Reset the Firmata device immediately after connect to force default Firmata startup state:
       All pins with analog capability are configured as input, all other (digital) pins are configured as output
@@ -2377,8 +2431,9 @@ sub FRM_Serial_Close {
       be reinitialized.
       </li><br>
 
+      <a name="i2c-config"/>
       <li>i2c-config &lt;write-read-delay&gt;, no default<br>
-      Configure the Arduino for ic2 communication. Definig this attribute will enable I2C on all
+      Configure the Arduino for I2C communication. Definig this attribute will enable I2C on all
       i2c_pins received by the capability-query issued during initialization of FRM.<br>
       As of Firmata 2.3 you can set a delay-time (in microseconds, max. 32767, default: 0) that will be
       inserted into I2C protocol when switching from write to read. This may be necessary because Firmata
@@ -2386,31 +2441,36 @@ sub FRM_Serial_Close {
       will be executed on the Firmata device in a different time sequence. Use the maximum operation
       time required by the connected I2C devices (e.g. 30000 for the BMP180 with triple oversampling,
       see I2C device manufacturer documentation for details).<br>
-      See: <a href="http://www.firmata.org/wiki/Protocol#I2C">Firmata Protocol details about I2C</a>
+      See: <a href="https://github.com/firmata/protocol/blob/master/i2c.md">Firmata Protocol details about I2C</a>
       </li><br>
 
+      <a name="sampling-interval"/>
       <li>sampling-interval &lt;interval&gt;, default: 1000 ms<br>
       Configure the interval Firmata reports analog data to FRM (in milliseconds, max. 32767).<br>
       This interval applies to the operation of <a href="#FRM_I2C">FRM_I2C</a>.<br>
-      See: <a href="http://www.firmata.org/wiki/Protocol#Sampling_Interval">Firmata Protocol details about Sampling Interval</a>
+      See: <a href="https://github.com/firmata/protocol/blob/master/protocol.md#sampling-interval">Firmata Protocol details about Sampling Interval</a>
       </li><br>
 
+      <a name="software-serial-config"/>
       <li>software-serial-config &lt;port&gt;:&lt;rx pin&gt;:&lt;tx pin&gt;, no default<br>
       For using a software serial port (port number 8, 9, 10 or 11) two I/O pins must be specified.
       The rx pin must have interrupt capability and the tx pin must have digital output capability.<br>
       See: <a href="https://www.arduino.cc/en/Reference/SoftwareSerial">Arduino SoftwareSerial Library</a>
       </li><br>
 
+      <a name="errorExclude"/>
       <li>errorExclude &lt;regexp&gt;, no default<br>
       If set will exclude a string message received from the Firmata device that matches the given regexp
       from being logged at verbose=3 and will assign the data to the reading <i>stringMessage</i> instead
       of <i>error</i>. Logging will still be done at verbose=5.
       </li><br>
 
+      <a name="disable"/>
       <li>disable {0|1}, default: 0<br>
       Disables this devices if set to 1.
       </li><br>
 
+      <a name="ping-interval"/>
       <li>ping-interval &lt;interval&gt;, default: disabled<br>
       Configure the interval in milliseconds for FHEM to send the string message <i>ping</i> to the
       firmata device (e.g. 10000 ms). The default Firmata device implementation will ignore this message
@@ -2423,7 +2483,8 @@ sub FRM_Serial_Close {
       to trigger.
       </li><br>
 
-      <li>receiveTimeout &lt;teimout&gt;, default: disabled<br>
+      <a name="receiveTimeout"/>
+      <li>receiveTimeout &lt;timeout&gt;, default: disabled<br>
       If a network connected Firmata device is expected to periodically send messages (e.g. analog data
       or <i>ping</i>) this timeout may be set to a none zero number of seconds after which the network
       connection will be closed. Choose a value high enough to avoid unintended disconnects. Take into
@@ -2432,13 +2493,18 @@ sub FRM_Serial_Close {
       This can be used to detect a Firmata device malfunction.
       </li><br>
 
+      <a name="dummy"/>
       <li>dummy {0|1}, default: 0<br>
       Will be set to 1 if device is set to <i>none</i>. Reserved for internal use, do not set manually!
-      </li>
+      </li><br>
+
+      <li><a href="#attributes">global attributes</a></li>
+
+      <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul>
   <br><br>
 
-  <a name="FRMreadings"></a>
+  <a name="FRMreadings"/>
   <b>Readings</b><br>
   <ul>
       <li>state<br>
@@ -2458,7 +2524,7 @@ sub FRM_Serial_Close {
   </ul>
   <br><br>
 
-  <a name="FRMinternals"></a>
+  <a name="FRMinternals"/>
   <b>Internals</b><br>
   <ul>
       <li><code>DRIVER_VERSION</code><br>
@@ -2507,7 +2573,7 @@ sub FRM_Serial_Close {
   </ul>
   <br><br>
 
-  <a name="FRMnotes"></a>
+  <a name="FRMnotes"/>
   <b>Notes</b><br>
   <ul>
       <li><code>Digital Pins</code><br>
@@ -2545,18 +2611,17 @@ sub FRM_Serial_Close {
         descriptor (e.g. the <a href="#HEATRONIC">HEATRONIC</a> module works perfectly with a single line patch).
       </li>
   </ul>
-</ul>
-<br>
+</ul><br>
 
 =end html
 
 =begin html_DE
 
-<a name="FRM"></a>
-<h3>FRM_OUT</h3>
+<a name="FRM"/>
+<h3>FRM</h3>
 <ul>
   Die Modulbeschreibung von FRM gibt es nur auf <a href="commandref.html#FRM">Englisch</a>. <br>
-</ul> <br>
+</ul><br>
 
 =end html_DE
 
