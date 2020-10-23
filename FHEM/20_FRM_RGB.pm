@@ -15,22 +15,23 @@ Copyright (C) 2020 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -333,6 +334,9 @@ sub FRM_RGB_Attr
     o set argument metadata added
     o get/set argument verifier improved
 
+  19.10.2020 jensb
+    o annotaded module help of attributes for FHEMWEB
+
 =cut
 
 
@@ -354,7 +358,7 @@ sub FRM_RGB_Attr
 
 =begin html
 
-<a name="FRM_RGB"></a>
+<a name="FRM_RGB"/>
 <h3>FRM_RGB</h3>
 <ul>
   allows to drive LED-controllers and other multichannel-devices that use PWM as input by an <a href="http://www.arduino.cc">Arduino</a> running <a href="http://www.firmata.org">Firmata</a>
@@ -362,7 +366,7 @@ sub FRM_RGB_Attr
   The value set will be output by the specified pins as pulse-width-modulated signals.<br>
   Requires a defined <a href="#FRM">FRM</a>-device to work.<br><br>
 
-  <a name="FRM_RGBdefine"></a>
+  <a name="FRM_RGBdefine"/>
   <b>Define</b>
   <ul>
   <code>define &lt;name&gt; FRM_RGB &lt;pin&gt; &lt;pin&gt; &lt;pin&gt; [pin...]</code> <br>
@@ -371,69 +375,77 @@ sub FRM_RGB_Attr
   </ul>
 
   <br>
-  <a name="FRM_RGBset"></a>
+  <a name="FRM_RGBset"/>
   <b>Set</b><br>
   <ul>
-  <code>set &lt;name&gt; on</code><br>
-  sets the pulse-width of all configured pins to 100%</ul><br>
+    <code>set &lt;name&gt; on</code><br>
+    sets the pulse-width of all configured pins to 100%</ul><br>
   <ul>
-  <code>set &lt;name&gt; off</code><br>
-  sets the pulse-width of all configured pins to 0%</ul><br>
+    <code>set &lt;name&gt; off</code><br>
+    sets the pulse-width of all configured pins to 0%</ul><br>
   <ul>
-  <a href="#setExtensions">set extensions</a> are supported</ul><br>
+    <a href="#setExtensions">set extensions</a> are supported</ul><br>
   <ul>
-  <code>set &lt;name&gt; toggle</code><br>
-  toggles in between the last dimmed value, 0% and 100%. If no dimmed value was set before defaults to pulsewidth 50% on all channels</ul><br>
+    <code>set &lt;name&gt; toggle</code><br>
+    toggles in between the last dimmed value, 0% and 100%. If no dimmed value was set before defaults to pulsewidth 50% on all channels</ul><br>
   <ul>
-  <code>set &lt;name&gt; rgb &lt;value&gt;</code><br>
-  sets the pulse-width of all channels at once. Also sets the value toggle can switch to<br>
-  Value is encoded as hex-string, 2-digigs per channel (e.g. FFFFFF for reguler rgb)</ul><br>
+    <code>set &lt;name&gt; rgb &lt;value&gt;</code><br>
+    sets the pulse-width of all channels at once. Also sets the value toggle can switch to<br>
+    Value is encoded as hex-string, 2-digigs per channel (e.g. FFFFFF for reguler rgb)</ul><br>
   <ul>
-  <code>set &lt;name&gt; pct &lt;value&gt;</code><br>
-  dims all channels at once while leving the ratio in between the channels unaltered.<br>
-  Range is 0-100 ('pct' stands for 'percent')</ul><br>
+    <code>set &lt;name&gt; pct &lt;value&gt;</code><br>
+    dims all channels at once while leving the ratio in between the channels unaltered.<br>
+    Range is 0-100 ('pct' stands for 'percent')</ul><br>
   <ul>
-  <code>set &lt;name&gt; dimUp</code><br>
-  dims up by 10%</ul><br>
+    <code>set &lt;name&gt; dimUp</code><br>
+    dims up by 10%</ul><br>
   <ul>
-  <code>set &lt;name&gt; dimDown</code><br>
-  dims down by 10%</ul><br>
-  <a name="FRM_RGBget"></a>
+    <code>set &lt;name&gt; dimDown</code><br>
+    dims down by 10%
+  </ul><br>
+
+  <a name="FRM_RGBget"/>
   <b>Get</b><br>
   <ul>
-  <code>get &lt;name&gt; rgb</code><br>
-  returns the values set for all channels. Format is hex, 2 nybbles per channel.
+    <code>get &lt;name&gt; rgb</code><br>
+    returns the values set for all channels. Format is hex, 2 nybbles per channel.
   </ul><br>
   <ul>
-  <code>get &lt;name&gt; RGB</code><br>
-  returns the values set for all channels in normalized format. Format is hex, 2 nybbles per channel.
-  Values are scaled such that the channel with the highest value is set to FF. The real values are calculated
-  by multipying each byte with the value of 'pct'.
+    <code>get &lt;name&gt; RGB</code><br>
+    returns the values set for all channels in normalized format. Format is hex, 2 nybbles per channel.
+    Values are scaled such that the channel with the highest value is set to FF. The real values are calculated
+    by multipying each byte with the value of 'pct'.
   </ul><br>
   <ul>
-  <code>get &lt;name&gt; pct</code><br>
-  returns the value of the channel with the highest value scaled to the range of 0-100 (percent).
+    <code>get &lt;name&gt; pct</code><br>
+    returns the value of the channel with the highest value scaled to the range of 0-100 (percent).
   </ul><br>
-  <a name="FRM_RGBattr"></a>
+
+  <a name="FRM_RGBattr"/>
   <b>Attributes</b><br>
   <ul>
-      <li>restoreOnStartup &lt;on|off&gt;</li>
-      <li>restoreOnReconnect &lt;on|off&gt;</li>
-      <li><a href="#IODev">IODev</a><br>
-      Specify which <a href="#FRM">FRM</a> to use. (Optional, only required if there is more
-      than one FRM-device defined.)
-      </li>
-      <li><a href="#eventMap">eventMap</a><br></li>
-      <li><a href="#readingFnAttributes">readingFnAttributes</a><br></li>
-    </ul>
+    <a name="restoreOnStartup"/>
+    <li>restoreOnStartup &lt;on|off&gt;</li>
+
+    <a name="restoreOnReconnect"/>
+    <li>restoreOnReconnect &lt;on|off&gt;</li>
+
+    <a name="IODev"/>
+    <li><a href="#IODev">IODev</a><br>
+    Specify which <a href="#FRM">FRM</a> to use. Only required if there is more than one FRM-device defined.
+    </li>
+
+    <li><a href="#attributes">global attributes</a></li>
+
+    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul>
-<br>
+</ul><br>
 
 =end html
 
 =begin html_DE
 
-<a name="FRM_RGB"></a>
+<a name="FRM_RGB"/>
 <h3>FRM_RGB</h3>
 <ul>
   Die Modulbeschreibung von FRM_RGB gibt es nur auf <a href="commandref.html#FRM_RGB">Englisch</a>. <br>

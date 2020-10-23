@@ -15,22 +15,23 @@ Copyright (C) 2016 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -252,6 +253,9 @@ sub FRM_OUT_Attr
     o set argument metadata added
     o set argument verifier improved
 
+  22.10.2020 jensb
+    o annotaded module help of attributes for FHEMWEB
+
 =cut
 
 
@@ -273,7 +277,7 @@ sub FRM_OUT_Attr
 
 =begin html
 
-<a name="FRM_OUT"></a>
+<a name="FRM_OUT"/>
 <h3>FRM_OUT</h3>
 <ul>
   This module represents a pin of a <a href="http://www.firmata.org">Firmata device</a>
@@ -283,69 +287,79 @@ sub FRM_OUT_Attr
   the internal reading "<a href="#FRMinternals">output_pins</a>"<br>
   of the FRM device (after connecting to the Firmata device) to be used as digital output.<br><br>
 
-  <a name="FRM_OUTdefine"></a>
+  <a name="FRM_OUTdefine"/>
   <b>Define</b>
   <ul>
-  <code>define &lt;name&gt; FRM_OUT &lt;pin&gt;</code> <br>
-  Defines the FRM_OUT device. &lt;pin&gt> is the arduino-pin to use.
+    <code>define &lt;name&gt; FRM_OUT &lt;pin&gt;</code> <br>
+    Defines the FRM_OUT device. &lt;pin&gt> is the arduino-pin to use.
   </ul><br>
 
-  <a name="FRM_OUTset"></a>
+  <a name="FRM_OUTset"/>
   <b>Set</b><br>
   <ul>
-  <code>set &lt;name&gt; on|off</code><br><br>
+    <code>set &lt;name&gt; on|off</code><br><br>
   </ul>
   <ul>
-  <a href="#setExtensions">set extensions</a> are supported<br>
+    <a href="#setExtensions">set extensions</a> are supported<br>
   </ul><br>
 
-  <a name="FRM_OUTget"></a>
+  <a name="FRM_OUTget"/>
   <b>Get</b><br>
   <ul>
-  N/A
+    N/A
   </ul><br>
 
-  <a name="FRM_OUTattr"></a>
+  <a name="FRM_OUTattr"/>
   <b>Attributes</b><br>
   <ul>
-      <li>restoreOnStartup &lt;on|off&gt;, default: on<br>
-      Set output value in Firmata device on FHEM startup (if device is already connected) and
-      whenever the <em>setstate</em> command is used.
-      </li>
-      <li>restoreOnReconnect &lt;on|off&gt;, default: on<br>
-      Set output value in Firmata device after IODev is initialized.
-      </li>
-      <li>activeLow &lt;yes|no&gt;, default: no</li>
-      <li><a href="#IODev">IODev</a><br>
-      Specify which <a href="#FRM">FRM</a> to use. (Optional, only required if there is more
-      than one FRM-device defined.)
-      </li>
-      <li>valueMode &lt;send|receive|bidirectional&gt;, default: send<br>
-      Define how the reading <em>value</em> is updated:<br>
+    <a name="restoreOnStartup"/>
+    <li>restoreOnStartup &lt;on|off&gt;, default: on<br>
+    Set output value in Firmata device on FHEM startup (if device is already connected) and
+    whenever the <em>setstate</em> command is used.
+    </li>
+
+    <a name="restoreOnReconnect"/>
+    <li>restoreOnReconnect &lt;on|off&gt;, default: on<br>
+    Set output value in Firmata device after IODev is initialized.
+    </li>
+
+    <a name="activeLow"/>
+    <li>activeLow &lt;yes|no&gt;, default: no</li>
+
+    <a name="IODev"/>
+    <li><a href="#IODev">IODev</a><br>
+    Specify which <a href="#FRM">FRM</a> to use. Only required if there is more than one FRM-device defined.
+    </li>
+
+    <a name="valueMode"/>
+    <li>valueMode &lt;send|receive|bidirectional&gt;, default: send<br>
+    Define how the reading <em>value</em> is updated:<br>
       <ul>
         <li>send - after sending</li>
         <li>receive - after receiving</li>
         <li>bidirectional - after sending and receiving</li>
       </ul>
-      </li>
-      <li><a href="#eventMap">eventMap</a><br></li>
-      <li><a href="#readingFnAttributes">readingFnAttributes</a><br></li>
+    </li>
+
+    <li><a href="#attributes">global attributes</a></li>
+
+    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul><br>
 
-  <a name="FRM_OUTnotes"></a>
+  <a name="FRM_OUTnotes"/>
   <b>Notes</b><br>
   <ul>
-      <li>attribute <i>stateFormat</i><br>
-      In most cases it is a good idea to assign "value" to the attribute <i>stateFormat</i>. This will show the state
-      of the pin in the web interface.
-      </li>
-      <li>attribute <i>valueMode</i><br>
-      For modes "receive<" and "bidirectional" to work the default Firmata application code must
-      be modified in function "<code>setPinModeCallback</code>":<br>
-      add "<ins> || mode == OUTPUT</ins>" to the if condition for "<code>portConfigInputs[pin / 8] |= (1 << (pin & 7));</code>" to enable<br>
-      reporting the output state (as if the pin were an input). This is of interest if you have custom code in your Firmata device that can change<br>
-      the state of an output or you want a feedback from the Firmata device after the output state was changed.
-      </li>
+    <li>attribute <i>stateFormat</i><br>
+    In most cases it is a good idea to assign "value" to the attribute <i>stateFormat</i>. This will show the state
+    of the pin in the web interface.
+    </li>
+    <li>attribute <i>valueMode</i><br>
+    For modes "receive" and "bidirectional" to work the default Firmata application code must
+    be modified in function "<code>setPinModeCallback</code>":<br>
+    add "<code> || mode == OUTPUT</code>" to the if condition for "<code>portConfigInputs[pin / 8] |= (1 << (pin & 7));</code>" to enable<br>
+    reporting the output state (as if the pin were an input). This is of interest if you have custom code in your Firmata device that my change to pin state.<br>
+    the state of an output or you want a feedback from the Firmata device after the output state was changed.
+    </li>
   </ul>
 </ul><br>
 
@@ -353,11 +367,11 @@ sub FRM_OUT_Attr
 
 =begin html_DE
 
-<a name="FRM_OUT"></a>
+<a name="FRM_OUT"/>
 <h3>FRM_OUT</h3>
 <ul>
   Die Modulbeschreibung von FRM_OUT gibt es nur auf <a href="commandref.html#FRM_OUT">Englisch</a>. <br>
-</ul> <br>
+</ul><br>
 
 =end html_DE
 

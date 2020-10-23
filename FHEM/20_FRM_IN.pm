@@ -15,22 +15,23 @@ Copyright (C) 2018 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -377,6 +378,9 @@ sub FRM_IN_Attr
     o prototypes removed
     o set argument verifier improved
 
+  19.10.2020 jensb
+    o annotaded module help of attributes for FHEMWEB
+
 =cut
 
 
@@ -398,7 +402,7 @@ sub FRM_IN_Attr
 
 =begin html
 
-<a name="FRM_IN"></a>
+<a name="FRM_IN"/>
 <h3>FRM_IN</h3>
 <ul>
   This module represents a pin of a <a href="http://www.firmata.org">Firmata device</a>
@@ -408,7 +412,7 @@ sub FRM_IN_Attr
   the internal reading <a href="#FRMinternals">"input_pins" or "pullup_pins"</a>
   of the FRM device (after connecting to the Firmata device) to be used as digital input with or without pullup.<br><br>
 
-  <a name="FRM_INdefine"></a>
+  <a name="FRM_INdefine"/>
   <b>Define</b>
   <ul>
   <code>define &lt;name&gt; FRM_IN &lt;pin&gt;</code> <br>
@@ -416,7 +420,7 @@ sub FRM_IN_Attr
   </ul>
 
   <br>
-  <a name="FRM_INset"></a>
+  <a name="FRM_INset"/>
   <b>Set</b><br>
   <ul>
     <li>alarm on|off<br>
@@ -427,7 +431,7 @@ sub FRM_IN_Attr
     The counter is incremented depending on the attribute 'count-mode'.</li>
   </ul><br>
 
-  <a name="FRM_INget"></a>
+  <a name="FRM_INget"/>
   <b>Get</b>
   <ul>
     <li>reading<br>
@@ -443,31 +447,48 @@ sub FRM_IN_Attr
     returns the 'state' reading</li>
   </ul><br>
 
-  <a name="FRM_INattr"></a>
+  <a name="FRM_INattr"/>
   <b>Attributes</b><br>
   <ul>
-      <li>activeLow yes|no<br>
-      inverts the logical state of the pin reading if set to yes (defaults to 'no').</li>
-      <li>count-mode none|rising|falling|both<br>
-      Determines whether 'rising' (transitions from 'off' to 'on') of falling (transitions from 'on' to 'off')
-      edges (or 'both') are counted (defaults to 'none').</li>
-      <li>count-threshold &lt;number&gt;<br>
-      sets the threshold-value for the counter - if defined whenever 'count' exceeds the 'count-threshold' the 'alarm' reading is
-      set to 'on' (defaults to undefined). Use 'set alarm off' to clear the alarm.</li>
-      <li>reset-on-threshold-reached yes|no<br>
-      if set to 'yes' reset the counter to 0 when the threshold is reached (defaults to 'no').
-      </li>
-      <li>internal-pullup on|off<br>
-      enables/disables the internal pullup resistor of the Firmata pin (defaults to 'off'). Requires hardware and firmware support.
-      </li>
-      <li><a href="#IODev">IODev</a><br>
-      specify which <a href="#FRM">FRM</a> to use.
-      </li>
-      <li><a href="#eventMap">eventMap</a><br></li>
-      <li><a href="#readingFnAttributes">readingFnAttributes</a><br></li>
+    <a name="activeLow"/>
+    <li>activeLow yes|no<br>
+    inverts the logical state of the pin reading if set to yes (defaults to 'no').
+    </li>
+
+    <a name="count-mode"/>
+    <li>count-mode none|rising|falling|both<br>
+    Determines whether 'rising' (transitions from 'off' to 'on') of falling (transitions from 'on' to 'off')
+    edges (or 'both') are counted (defaults to 'none').
+    </li>
+
+    <a name="count-threshold"/>
+    <li>count-threshold &lt;number&gt;<br>
+    sets the threshold-value for the counter - if defined whenever 'count' exceeds the 'count-threshold'
+    the 'alarm' reading is set to 'on' (defaults to undefined). Use 'set alarm off' to clear the alarm.
+    </li>
+
+    <a name="reset-on-threshold-reached"/>
+    <li>reset-on-threshold-reached yes|no<br>
+    if set to 'yes' reset the counter to 0 when the threshold is reached (defaults to 'no').
+    </li>
+
+    <a name="internal-pullup"/>
+    <li>internal-pullup on|off<br>
+    enables/disables the internal pullup resistor of the Firmata pin (defaults to 'off'). Requires hardware
+    and firmware support.
+    </li>
+
+    <a name="IODev"/>
+    <li><a href="#IODev">IODev</a><br>
+    Specify which <a href="#FRM">FRM</a> to use. Only required if there is more than one FRM-device defined.
+    </li>
+
+    <li><a href="#attributes">global attributes</a></li>
+
+    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul><br>
 
-  <a name="FRM_INnotes"></a>
+  <a name="FRM_INnotes"/>
   <b>Notes</b><br>
   <ul>
       <li>attribute <i>stateFormat</i><br>
@@ -484,7 +505,7 @@ sub FRM_IN_Attr
 
 =begin html_DE
 
-<a name="FRM_IN"></a>
+<a name="FRM_IN"/>
 <h3>FRM_IN</h3>
 <ul>
   Die Modulbeschreibung von FRM_IN gibt es nur auf <a href="commandref.html#FRM_IN">Englisch</a>. <br>

@@ -15,22 +15,23 @@ Copyright (C) 2020 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -263,6 +264,9 @@ sub FRM_ROTENC_State
     o set argument verifier improved
     o moved define argument verification and decoding from Init to Define
 
+  19.10.2020 jensb
+    o annotaded module help of attributes for FHEMWEB
+
 =cut
 
 
@@ -284,13 +288,13 @@ sub FRM_ROTENC_State
 
 =begin html
 
-<a name="FRM_ROTENC"></a>
+<a name="FRM_ROTENC"/>
 <h3>FRM_ROTENC</h3>
 <ul>
   represents a rotary-encoder attached to two pins of an <a href="http://www.arduino.cc">Arduino</a> running <a href="http://www.firmata.org">Firmata</a><br>
   Requires a defined <a href="#FRM">FRM</a>-device to work.<br><br>
 
-  <a name="FRM_ROTENCdefine"></a>
+  <a name="FRM_ROTENCdefine"/>
   <b>Define</b>
   <ul>
   <code>define &lt;name&gt; FRM_ROTENC &lt;pinA&gt; &lt;pinB&gt; [id]</code> <br>
@@ -299,7 +303,7 @@ sub FRM_ROTENC_State
   </ul>
 
   <br>
-  <a name="FRM_ROTENCset"></a>
+  <a name="FRM_ROTENCset"/>
   <b>Set</b><br>
   <ul>
     <li>reset<br>
@@ -307,7 +311,8 @@ sub FRM_ROTENC_State
     <li>offset &lt;value&gt;<br>
     set offset value of 'position'<br></li>
   </ul><br>
-  <a name="FRM_ROTENCget"></a>
+
+  <a name="FRM_ROTENCget"/>
   <b>Get</b>
   <ul>
     <li>position<br>
@@ -320,28 +325,30 @@ sub FRM_ROTENC_State
     returns the raw position value as it's reported by the rotary-encoder attached to pinA and pinB of the arduino<br>
     this value is reset to 0 whenever Arduino restarts or Firmata is reinitialized<br></li>
   </ul><br>
-  <a name="FRM_ROTENCattr"></a>
+
+  <a name="FRM_ROTENCattr"/>
   <b>Attributes</b><br>
   <ul>
-      <li><a href="#IODev">IODev</a><br>
-      Specify which <a href="#FRM">FRM</a> to use. (Optional, only required if there is more
-      than one FRM-device defined.)
-      </li>
-      <li><a href="#eventMap">eventMap</a><br></li>
-      <li><a href="#readingFnAttributes">readingFnAttributes</a><br></li>
-    </ul>
+    <a name="IODev"/>
+    <li><a href="#IODev">IODev</a><br>
+    Specify which <a href="#FRM">FRM</a> to use. Only required if there is more than one FRM-device defined.
+    </li>
+
+    <li><a href="#attributes">global attributes</a></li>
+
+    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul>
-<br>
+</ul><br>
 
 =end html
 
 =begin html_DE
 
-<a name="FRM_ROTENC"></a>
+<a name="FRM_ROTENC"/>
 <h3>FRM_ROTENC</h3>
 <ul>
   Die Modulbeschreibung von FRM_ROTENC gibt es nur auf <a href="commandref.html#FRM_ROTENC">Englisch</a>. <br>
-</ul> <br>
+</ul><br>
 
 =end html_DE
 

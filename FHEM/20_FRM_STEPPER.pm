@@ -15,22 +15,23 @@ Copyright (C) 2020 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -306,6 +307,9 @@ sub FRM_STEPPER_Attr
     o module help updated
     o moved define argument verification and decoding from Init to Define
 
+  22.10.2020 jensb
+    o annotaded module help of attributes for FHEMWEB
+
 =cut
 
 
@@ -330,102 +334,125 @@ sub FRM_STEPPER_Attr
 <a name="FRM_STEPPER"></a>
 <h3>FRM_STEPPER</h3>
 <ul>
-  represents a stepper-motor attached to digital-i/o pins of an <a href="http://www.arduino.cc">Arduino</a> running <a href="http://www.firmata.org">Firmata</a><br>
+  represents a stepper-motor attached to digital-i/o pins of an <a href="http://www.arduino.cc">Arduino</a>
+  running <a href="http://www.firmata.org">Firmata</a><br>
   Requires a defined <a href="#FRM">FRM</a>-device to work.<br><br>
 
   <a name="FRM_STEPPERdefine"></a>
   <b>Define</b>
   <ul>
-  <code>define &lt;name&gt; FRM_STEPPER [DRIVER|TWO_WIRE|FOUR_WIRE] &lt;directionPin&gt &lt;stepPin&gt [motorPin3 motorPin4] stepsPerRev [stepper-id]</code><br>
-  Defines the FRM_STEPPER device.
-  <li>[DRIVER|TWO_WIRE|FOUR_WIRE] defines the control-sequence being used to drive the motor.
-    <ul>
-      <li>DRIVER: motor is attached via a smart circuit that is controlled via two lines: 1 line defines the direction to turn, the other triggers one step per impluse.</li>
-      <li>FOUR_WIRE: motor is attached via four wires each driving one coil individually.</li>
-      <li>TWO_WIRE: motor is attached via two wires. This mode makes use of the fact that at any time two of the four motor
-coils are the inverse of the other two so by using an inverting circuit to drive the motor the number of control connections can be reduced from 4 to 2.</li>
-    </ul>
-  </li>
-  <li>
-    <ul>
-      <li>The sequence of control signals for 4 control wires is as follows:<br>
-<br>
-<code>
-Step C0 C1 C2 C3<br>
-   1  1  0  1  0<br>
-   2  0  1  1  0<br>
-   3  0  1  0  1<br>
-   4  1  0  0  1<br>
-</code>
-      </li>
-      <li>The sequence of controls signals for 2 control wires is as follows:<br>
-(columns C1 and C2 from above):<br>
-<br>
-<code>
-Step C0 C1<br>
-   1  0  1<br>
-   2  1  1<br>
-   3  1  0<br>
-   4  0  0<br>
-</code>
-      </li>
-    </ul>
-  </li>
-  <li>
-  If your stepper-motor does not move or does move but only in a single direction you will have to rearrage the pin-numbers to match the control sequence.<br>
-  that can be archived either by rearranging the physical connections, or by mapping the connection to the pin-definitions in FRM_STEPPERS define:<br>
-  e.g. the widely used cheap 28byj-48 you can get for few EUR on eBay including a simple ULN2003 driver interface may be defined by<br>
-  <code>define stepper FRM_STEPPER FOUR_WIRE 7 5 6 8 64 0</code><br>
-  when being connected to the arduio with:<br>
-  <code>motor pin1 <-> arduino pin5<br>
-  motor pin2 <-> arduino pin6<br>
-  motor pin3 <-> arduino pin7<br>
-  motor pin4 <-> arduino pin8<br>
-  motor pin5 <-> ground</code><br>
-  </li>
-  </ul>
+    <code>define &lt;name&gt; FRM_STEPPER [DRIVER|TWO_WIRE|FOUR_WIRE] &lt;directionPin&gt &lt;stepPin&gt [motorPin3 motorPin4] stepsPerRev [stepper-id]</code><br>
+    Defines the FRM_STEPPER device.
+    <li>[DRIVER|TWO_WIRE|FOUR_WIRE] defines the control-sequence being used to drive the motor.
+      <ul>
+        <li>DRIVER: motor is attached via a smart circuit that is controlled via two lines: 1 line defines the
+        direction to turn, the other triggers one step per impluse.
+        </li>
+        <li>FOUR_WIRE: motor is attached via four wires each driving one coil individually.</li>
+        <li>TWO_WIRE: motor is attached via two wires. This mode makes use of the fact that at any time two of
+        the four motor coils are the inverse of the other two so by using an inverting circuit to drive the motor
+        the number of control connections can be reduced from 4 to 2.
+        </li>
+      </ul>
+    </li>
+    <li>
+      <ul>
+        <li>The sequence of control signals for 4 control wires is as follows:<br><br>
 
-  <br>
+          <code>
+          Step C0 C1 C2 C3<br>
+             1  1  0  1  0<br>
+             2  0  1  1  0<br>
+             3  0  1  0  1<br>
+             4  1  0  0  1<br>
+          </code>
+        </li>
+        <li>The sequence of controls signals for 2 control wires is as follows:<br>
+        (columns C1 and C2 from above):<br><br>
+
+          <code>
+          Step C0 C1<br>
+             1  0  1<br>
+             2  1  1<br>
+             3  1  0<br>
+             4  0  0<br>
+          </code>
+        </li>
+      </ul>
+    </li>
+    <li>
+    If your stepper-motor does not move or does move but only in a single direction you will have to rearrage
+    the pin-numbers to match the control sequence. That can be archived either by rearranging the physical
+    connections, or by mapping the connection to the pin-definitions in FRM_STEPPERS define:<br>
+    e.g. the widely used cheap 28byj-48 you can get for few EUR on eBay including a simple ULN2003 driver
+    interface may be defined by<br>
+    <code>define stepper FRM_STEPPER FOUR_WIRE 7 5 6 8 64 0</code><br>
+    when being connected to the arduio with:<br><br>
+
+      <code>
+      motor pin1 <-> arduino pin5<br>
+      motor pin2 <-> arduino pin6<br>
+      motor pin3 <-> arduino pin7<br>
+      motor pin4 <-> arduino pin8<br>
+      motor pin5 <-> ground
+      </code>
+    </li><br>
+  </ul><br>
+
   <a name="FRM_STEPPERset"></a>
   <b>Set</b><br>
   <ul>
-  <code>set &lt;name&gt; reset</code>
-  <li>resets the reading 'position' to 0 without moving the motor</li>
-  <br>
-  <code>set &lt;name&gt; position &lt;position&gt; [speed] [acceleration] [deceleration]</code>
-  <li>moves the motor to the absolute position specified. positive or negative integer<br>
-  speed (10 * revolutions per minute, optional), defaults to 30, higher numbers are faster) At 2048 steps per revolution (28byj-48) a speed of 30 results in 3 rev/min<br>
-  acceleration and deceleration are optional.<br>
-  </li>
-  <br>
-  <code>set &lt;name&gt; step &lt;stepstomove&gt; [speed] [accel] [decel]</code>
-  <li>moves the motor the number of steps specified. positive or negative integer<br>
-  speed, accelleration and deceleration are optional.<br>
-  </li>
-  </ul>
+    <code>set &lt;name&gt; reset</code>
+    <li>resets the reading 'position' to 0 without moving the motor</li><br>
+
+    <code>set &lt;name&gt; position &lt;position&gt; [speed] [acceleration] [deceleration]</code>
+    <li>moves the motor to the absolute position specified. positive or negative integer<br>
+    speed (10 * revolutions per minute, optional), defaults to 30, higher numbers are faster.
+    At 2048 steps per revolution (28byj-48) a speed of 30 results in 3 rev/min<br>
+    acceleration and deceleration are optional.<br>
+    </li><br>
+
+    <code>set &lt;name&gt; step &lt;stepstomove&gt; [speed] [accel] [decel]</code>
+    <li>moves the motor the number of steps specified. positive or negative integer<br>
+    speed, accelleration and deceleration are optional.<br>
+    </li>
+  </ul><br>
+
   <a name="FRM_STEPPERget"></a>
   <b>Get</b><br>
   <ul>
-  <code>get &lt;position&gt;</code>
-  <li>returns the current position value</li>
+    <code>get &lt;position&gt;</code>
+    <li>returns the current position value</li>
   </ul><br>
+
   <a name="FRM_STEPPERattr"></a>
   <b>Attributes</b><br>
   <ul>
-      <li>restoreOnStartup &lt;on|off&gt;</li>
-      <li>restoreOnReconnect &lt;on|off&gt;</li>
-      <li><a href="#IODev">IODev</a><br>
-      Specify which <a href="#FRM">FRM</a> to use. (Optional, only required if there is more
-      than one FRM-device defined.)
-      </li>
-      <li>>speed (same meaning as in 'set position')</li>
-      <li>acceleration (same meaning as in 'set position')</li>
-      <li>deceleration (same meaning as in 'set position')</li>
-      <li><a href="#eventMap">eventMap</a><br></li>
-      <li><a href="#readingFnAttributes">readingFnAttributes</a><br></li>
-    </ul>
+    <a name="restoreOnStartup"/>
+    <li>restoreOnStartup &lt;on|off&gt;</li>
+
+    <a name="restoreOnReconnect"/>
+    <li>restoreOnReconnect &lt;on|off&gt;</li>
+
+    <a name="IODev"/>
+    <li><a href="#IODev">IODev</a><br>
+    Specify which <a href="#FRM">FRM</a> to use. Only required if there is more than one FRM-device defined.
+    </li>
+
+    <a name="speed"/>
+    <li>>speed (same meaning as in 'set position')</li>
+
+    <a name="acceleration"/>
+    <li>acceleration (same meaning as in 'set position')</li>
+
+    <a name="deceleration"/>
+    <li>deceleration (same meaning as in 'set position')</li>
+
+    <li><a href="#attributes">global attributes</a></li>
+
+    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul>
-<br>
+</ul><br>
 
 =end html
 
@@ -435,7 +462,7 @@ Step C0 C1<br>
 <h3>FRM_STEPPER</h3>
 <ul>
   Die Modulbeschreibung von FRM_STEPPER gibt es nur auf <a href="commandref.html#FRM_STEPPER">Englisch</a>. <br>
-</ul> <br>
+</ul><br>
 
 =end html_DE
 

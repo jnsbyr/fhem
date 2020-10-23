@@ -15,22 +15,23 @@ Copyright (C) 2016 jensb
 
 All rights reserved
 
-This script is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-The GNU General Public License can be found at
-
-http://www.gnu.org/copyleft/gpl.html.
-
-A copy is found in the textfile GPL.txt and important notices to the license
-from the author is found in LICENSE.txt distributed with these scripts.
+This script is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
 
 This script is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this script; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+A copy of the GNU General Public License, Version 2 can also be found at
+
+http://www.gnu.org/licenses/old-licenses/gpl-2.0.
 
 This copyright notice MUST APPEAR in all copies of the script!
 
@@ -213,6 +214,9 @@ sub FRM_AD_Attr
     o prototypes removed
     o set argument verifier added
 
+  22.10.2020 jensb
+    o annotaded module help of attributes for FHEMWEB
+
 =cut
 
 
@@ -232,7 +236,7 @@ sub FRM_AD_Attr
 
 =begin html
 
-<a name="FRM_AD"></a>
+<a name="FRM_AD"/>
 <h3>FRM_AD</h3>
 <ul>
   This module represents a pin of a <a href="http://www.firmata.org">Firmata device</a>
@@ -241,21 +245,21 @@ sub FRM_AD_Attr
   Requires a defined <a href="#FRM">FRM</a> device to work. The pin must be listed in the internal reading "<a href="#FRMinternals">analog_pins</a>"<br>
   of the FRM device (after connecting to the Firmata device) to be used as analog input.<br><br>
 
-  <a name="FRM_ADdefine"></a>
+  <a name="FRM_ADdefine"/>
   <b>Define</b>
   <ul>
-      <code>define &lt;name&gt; FRM_AD &lt;pin&gt;</code><br><br>
+    <code>define &lt;name&gt; FRM_AD &lt;pin&gt;</code><br><br>
 
-      Defines the FRM_AD device. &lt;pin&gt; is the arduino-pin to use.
+    Defines the FRM_AD device. &lt;pin&gt; is the arduino-pin to use.
   </ul><br>
 
-  <a name="FRM_ADset"></a>
+  <a name="FRM_ADset"/>
   <b>Set</b><br>
   <ul>
     N/A<br>
   </ul><br>
 
-  <a name="FRM_ADget"></a>
+  <a name="FRM_ADget"/>
   <b>Get</b><br>
   <ul>
     <li>reading<br>
@@ -274,32 +278,38 @@ sub FRM_AD_Attr
     returns the 'state' reading</li>
   </ul><br>
 
-  <a name="FRM_ADattr"></a>
+  <a name="FRM_ADattr"/>
   <b>Attributes</b><br>
   <ul>
-      <li>upper-threshold<br>
-      sets the 'upper-threshold'. Whenever the 'reading' exceeds this value 'alarm-upper-threshold' is set to 'on'<br>
-      As soon 'reading' falls below the 'upper-threshold' 'alarm-upper-threshold' turns 'off' again<br>
-      Defaults to the max pin resolution plus one.</li>
-      <li>lower-threshold<br>
-      sets the 'lower-threshold'. Whenever the 'reading' falls below this value 'alarm-lower-threshold' is set to 'on'<br>
-      As soon 'reading' rises above the 'lower-threshold' 'alarm-lower-threshold' turns 'off' again<br>
-      Defaults to -1.</li>
-      <li><a href="#IODev">IODev</a><br>
-      Specify which <a href="#FRM">FRM</a> to use. (Optional, only required if there is more
-      than one FRM-device defined.)
-      </li>
-      <li><a href="#eventMap">eventMap</a><br></li>
-      <li><a href="#readingFnAttributes">readingFnAttributes</a><br></li>
+    <a name="upper-threshold"/>
+    <li>upper-threshold<br>
+    sets the 'upper-threshold'. Whenever the 'reading' exceeds this value 'alarm-upper-threshold' is set to 'on'<br>
+    As soon 'reading' falls below the 'upper-threshold' 'alarm-upper-threshold' turns 'off' again<br>
+    Defaults to the max pin resolution plus one.</li>
+
+    <a name="lower-threshold"/>
+    <li>lower-threshold<br>
+    sets the 'lower-threshold'. Whenever the 'reading' falls below this value 'alarm-lower-threshold' is set to 'on'<br>
+    As soon 'reading' rises above the 'lower-threshold' 'alarm-lower-threshold' turns 'off' again<br>
+    Defaults to -1.</li>
+
+    <a name="IODev"/>
+    <li><a href="#IODev">IODev</a><br>
+    Specify which <a href="#FRM">FRM</a> to use. Only required if there is more than one FRM-device defined.
+    </li>
+
+    <li><a href="#attributes">global attributes</a></li>
+
+    <li><a href="#readingFnAttributes">readingFnAttributes</a></li>
   </ul><br>
 
-  <a name="FRM_ADnotes"></a>
+  <a name="FRM_ADnotes"/>
   <b>Notes</b><br>
   <ul>
-      <li>attribute <i>stateFormat</i><br>
-      In most cases it is a good idea to assign "reading" to the attribute <i>stateFormat</i>. This will show the
-      current value of the pin in the web interface.
-      </li>
+    <li>attribute <i>stateFormat</i><br>
+    In most cases it is a good idea to assign "reading" to the attribute <i>stateFormat</i>. This will show the
+    current value of the pin in the web interface.
+    </li>
   </ul>
 </ul><br>
 
@@ -307,7 +317,7 @@ sub FRM_AD_Attr
 
 =begin html_DE
 
-<a name="FRM_AD"></a>
+<a name="FRM_AD"/>
 <h3>FRM_AD</h3>
 <ul>
   Die Modulbeschreibung von FRM_AD gibt es nur auf <a href="commandref.html#FRM_AD">Englisch</a>. <br>
