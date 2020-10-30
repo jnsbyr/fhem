@@ -1,5 +1,5 @@
 ########################################################################################
-# $Id: 10_FRM.pm ? 2020-10-04 18:54:00Z jensb $
+# $Id: 10_FRM.pm 23052 2020-10-30 17:48:53Z jensb $
 ########################################################################################
 
 =encoding UTF-8
@@ -44,6 +44,7 @@ use warnings;
 
 use vars qw{%attr %defs};
 use GPUtils qw(:all);
+use DevIo;
 
 #add FHEM/lib to @INC if it's not already included. Should rather be in fhem.pl than here though...
 BEGIN {
@@ -123,8 +124,6 @@ sub FRM_Attr;
 
 sub FRM_Initialize {
   my $hash = shift @_;
-
-  require "$main::attr{global}{modpath}/FHEM/DevIo.pm";
 
   # Producer
   $hash->{Clients} = join (':',@clients);
@@ -2259,6 +2258,9 @@ sub FRM_Serial_Close {
   04.10.2020 jensb
     o wrapped Device::Firmata check into sub FRM_Get_Device_Firmata_Status() for use in other modules
     o annotaded module help of attributes for FHEMWEB
+    
+  30.10.2020 jensb
+    o "require DevIO" replaced with "use DevIO" (forum 110125)
 
 =cut
 
