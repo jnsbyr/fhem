@@ -1,5 +1,5 @@
 ﻿# -----------------------------------------------------------------------------
-# $Id: 55_DWD_OpenData.pm 23502 2021-01-09 19:41:53Z jensb $
+# $Id: 55_DWD_OpenData.pm 23506 2021-01-10 18:03:32Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -62,13 +62,13 @@ package AstroSun;
 use strict;
 use warnings;
 
-use Math::Trig ':pi';
+use Math::Trig qw(pi pi2 asin acos tan);
 use POSIX 'floor';
 use Time::Local 'timegm';
 use Time::Piece 'gmtime';
 
 require Exporter;
-our $VERSION   = '1.000001';
+our $VERSION   = '1.000003';
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AzimuthElevation RiseSet);
 our @EXPORT_OK = qw(EpochToJulianDate JulianDateToEpoch);
