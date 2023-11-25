@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201602 2002-10-09 11:06:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201603 2022-02-09 21:49:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -64,7 +64,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.016.002;
+our $VERSION   = 2.016.003;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -322,6 +322,9 @@ sub Define
 {
   my ($hash, $def) = @_;
   my $name = $hash->{NAME};
+
+  # module version
+  $hash->{VERSION} = $VERSION;
 
   ::readingsSingleUpdate($hash, 'state', 'initialized', 1);
 
@@ -731,7 +734,7 @@ sub PrepareForecastData
     my $date = ::ReadingsVal($d, "fc0_date", "?");
     my $hourPrefix = "fc0_".$index;
     my $time = ::ReadingsVal($d, $hourPrefix."_time", "");
-    my $epoch = ::time_str2num($date.' '.$time);
+    my $epoch = ::time_str2num($date.' '.$time.':00');
     if ($timeResolution == 6) {
       # 6 hours steps: 0...3, default index 1 (06:00 UTC) and 2 (12:00 UTC)
       if ($now < ($epoch + 7200)) {
@@ -1302,6 +1305,8 @@ sub DWD_OpenData_Weblink_Initialize
 =pod
 
 =head1 CHANGES
+
+  2022-02-09  (version 2.016.003) bugfix: added missing seconds for call to time_str2num to prevent Perl warning
 
   2020-10-09  feature: support configurable FHEM web root
               coding:  prototypes removed
