@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201603 2022-02-09 21:49:00Z jensb $
+# $Id: 99_DWD_OpenData_Weblink.pm 201604 2023-11-25 16:53:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -64,7 +64,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.016.003;
+our $VERSION   = 2.016.004;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -1258,7 +1258,7 @@ sub AsHtmlH
     my $ioDev = ::AttrVal($name, 'IODev', undef);
     my $days = ::AttrVal($name, 'forecastDays', 4);
     my $useGroundTemperature = ::AttrVal($name, 'useGroundTemperature', 0);
-    my $theme = ::AttrVal($name, 'theme', undef) eq 'dark'? THEME_DARK : THEME_LIGHT;
+    my $theme = ::AttrVal($name, 'theme', '') eq 'dark'? THEME_DARK : THEME_LIGHT;
     $ret .= '<div>';
     $ret .=   GetForecastCssH();
     $ret .=   GetForecastHtmlH($ioDev, $days, $useGroundTemperature, $theme);
@@ -1305,6 +1305,8 @@ sub DWD_OpenData_Weblink_Initialize
 =pod
 
 =head1 CHANGES
+
+  2023-11-25  (version 2.016.004) bugfix: default to light theme if theme attribute is undefined
 
   2022-02-09  (version 2.016.003) bugfix: added missing seconds for call to time_str2num to prevent Perl warning
 
