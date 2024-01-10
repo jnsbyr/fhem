@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# $Id: 99_DWD_OpenData_Weblink.pm 201604 2023-11-25 16:53:00Z jensb $
+# $Id: 98_DWD_OpenData_Weblink.pm 2016005 2024-01-10 21:11:00Z jensb $
 # -----------------------------------------------------------------------------
 
 =encoding UTF-8
@@ -64,7 +64,7 @@ use constant COLOR_WARM   => [ "orange", "orange" ];
 use constant COLOR_RAIN   => [ "blue",   "skyblue" ]; # light background -> blue, dark background -> skyblue
 
 require Exporter;
-our $VERSION   = 2.016.004;
+our $VERSION   = 2.016.005;
 our @ISA       = qw(Exporter);
 our @EXPORT    = qw(AsHtmlH);
 our @EXPORT_OK = qw();
@@ -1280,7 +1280,7 @@ package main;
 FHEM I<Initialize> function
 
 Enables commandref and autoloading of module without changing F<99_myUtils.pm>
-if this file is renamed to F<99_DWD_OpenData_Weblink.pm>.
+if this file is renamed to F<98_DWD_OpenData_Weblink.pm>.
 
 =over
 
@@ -1305,6 +1305,8 @@ sub DWD_OpenData_Weblink_Initialize
 =pod
 
 =head1 CHANGES
+
+  2024-01-10  (version 2.016.005) bugfix: renamed module to 98_DWD_OpenData_Weblink.pm to prevent autoloading by FHEM
 
   2023-11-25  (version 2.016.004) bugfix: default to light theme if theme attribute is undefined
 
