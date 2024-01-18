@@ -2863,7 +2863,7 @@ sub DWD_OpenData_Initialize {
 <a name="DWD_OpenData"></a>
 <h3>DWD_OpenData</h3>
 <ul>
-  The Deutsche Wetterdienst (DWD) provides public weather related data via its <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html">Open Data Server</a>. Any usage of the service and the data provided by the DWD is subject to the usage conditions on the Open Data Server webpage. An overview of the available content can be found at <a href="https://www.dwd.de/DE/leistungen/opendata/help/inhalt_allgemein/opendata_content_de_en_xls.xls">OpenData_weather_content.xls</a>. <br><br>
+  The Deutsche Wetterdienst (DWD) provides public weather related data via its <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html">Open Data Server</a>. Any usage of the service and the data provided by the DWD is subject to the usage conditions on the Open Data Server webpage. An overview of the available content can be found at <a href="https://www.dwd.de/DE/leistungen/opendata/help/schluessel_datenformate/kml/mosmix_elemente_xls.xlsx?__blob=publicationFile&v=5">mosmix_elemente_xls.xls</a>. <br><br>
 
   This module provides two elements of the available data:
   <ul> <br>
@@ -3137,7 +3137,7 @@ sub DWD_OpenData_Initialize {
 <a name="DWD_OpenData"></a>
 <h3>DWD_OpenData</h3>
 <ul>
-  Der Deutsche Wetterdienst (DWD) stellt Wetterdaten &uuml;ber den <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html">Open Data Server</a> zur Verf&uuml;gung. Die Verwendung dieses Dienstes und der vom DWD zur Verf&uuml;gung gestellten Daten unterliegt den auf der OpenData Webseite beschriebenen Bedingungen. Einen &Uuml;berblick &uuml;ber die verf&uuml;gbaren Daten findet man in der Tabelle <a href="https://www.dwd.de/DE/leistungen/opendata/help/inhalt_allgemein/opendata_content_de_en_xls.xls">OpenData_weather_content.xls</a>. <br><br>
+  Der Deutsche Wetterdienst (DWD) stellt Wetterdaten &uuml;ber den <a href="https://www.dwd.de/DE/leistungen/opendata/opendata.html">Open Data Server</a> zur Verf&uuml;gung. Die Verwendung dieses Dienstes und der vom DWD zur Verf&uuml;gung gestellten Daten unterliegt den auf der OpenData Webseite beschriebenen Bedingungen. Einen &Uuml;berblick &uuml;ber die verf&uuml;gbaren Daten findet man in der Tabelle <a href="https://www.dwd.de/DE/leistungen/opendata/help/schluessel_datenformate/kml/mosmix_elemente_xls.xlsx?__blob=publicationFile&v=5">mosmix_elemente_xls.xls</a>. <br><br>
 
   Eine Installationsbeschreibung findet sich in der <a href="https://wiki.fhem.de/wiki/DWD_OpenData">FHEMWiki</a>. <br><br>
 
