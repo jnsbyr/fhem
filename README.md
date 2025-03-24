@@ -8,6 +8,7 @@ This repository contains several modules for the [FHEM SmartHome Server](https:/
 - [Firmata modules](#firmata-modules)
 - [Weather module for DWD](#weather-module-for-dwd)
 - [Widget for DWD weather module](#widget-for-dwd-weather-module)
+- [Roller Shutter Controller](#roller-shutter-controller)
 
 
 ## Gardena 01251 irrigation valve management
@@ -107,7 +108,7 @@ An ongoing discussion about the module can be found in the [FHEM Forum](https://
 Widget for displaying forecast data and alerts from the [DWD_OpenData module](https://github.com/jnsbyr/fhem/blob/master/FHEM/55_DWD_OpenData.pm) with [FHEMWeb](https://wiki.fhem.de/wiki/FHEMWEB).
 
 #### Features
-This module is a HTML generator to be used with FHEMWeb to display the forcecast data and alerts retrieved by the DWD_OpenData module in graphical form using the FHEM built-in weather icons. For each day 2 icons are shown. The number of days to be displayed can be configured. In case of a weather alert an alert icon is shown on top of the corresponding weather icon. Clicking or touching the alert icon will open a dialog showing alert details.
+This module is a HTML generator to be used with FHEMWeb to display the forecast data and alerts retrieved by the DWD_OpenData module in graphical form using the FHEM built-in weather icons. For each day 2 icons are shown. The number of days to be displayed can be configured. In case of a weather alert an alert icon is shown on top of the corresponding weather icon. Clicking or touching the alert icon will open a dialog showing alert details.
 
 #### Installation and Configuration
 Informations on the installation and configuration can be found in the in-line documentation at end of the source file. You can use Pod2Html (e.g. at https://metacpan.org/pod2html) to preview the module help.
@@ -117,6 +118,29 @@ Informations on the installation and configuration can be found in the in-line d
 
 #### File
 - [99_DWD_OpenData_Weblink.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/99_DWD_OpenData_Weblink.pm)
+
+
+## Roller Shutter Controller
+
+Module to control a motor driven roller shutter combining comfort and thermal aspects.
+
+#### Features
+
+- support roller shutter actors with a) position, b) up/stop/down and c) up/down control
+- time preferences for morning up and evening down
+- detect "real" sunrise and sunset via sun luminosity sensor
+- partial opening during twilight (visual shielding)
+- delayed morning opening on weekend and holidays (sleep in)
+- immediate morning opening on motion detection
+- door sensor support to prevent closing of roller shutter while doors are open
+- indoor/outdoor thermal flow estimation (thermal radiation and sun) and thermal shading to prevent heating
+  based on time, luminosity and room temperature providing visual shielding and thermal shielding.
+
+#### Installation and Configuration
+The built-in module help (Commandref) provides essential information on the installation and configuration of the module. You can use Pod2Html (e.g. at https://metacpan.org/pod2html) to preview the module help.
+
+#### File
+- [98_RollerShutterController.pm](https://github.com/jnsbyr/fhem/blob/master/FHEM/98_RollerShutterController.pm)
 
 
 ## Copyright and License ##
